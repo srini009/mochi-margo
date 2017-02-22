@@ -170,6 +170,6 @@ static void lookup_ult(void *arg)
     {
         HG_Addr_to_string(margo_get_class(l->mid), tmp_addr_str,
             &tmp_addr_str_sz, *(l->addr_p));
-        printf("%s -> %s\n", l->addr_str, tmp_addr_str);
+        printf("lookup of %s returned %s\n", l->addr_str, tmp_addr_str);
     }
 }
