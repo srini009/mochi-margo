@@ -13,31 +13,22 @@
 
 #include "my-rpc.h"
 
-/* This is an example client program that issues 4 concurrent RPCs, each of
- * which includes a bulk transfer driven by the server.
- *
- * Each client operation executes as an independent ULT in Argobots.
- * The HG forward call is executed using asynchronous operations.
- */
-
-struct run_my_rpc_args
+struct lookup_args
 {
-    int val;
     margo_instance_id mid;
-    hg_context_t *hg_context;
-    hg_class_t *hg_class;
-    hg_addr_t svr_addr;
+    char *addr_str;
+    hg_addr_t *addr_p;
 };
 
-static void run_my_rpc(void *_arg);
+static void lookup_ult(void *_arg);
 
-static hg_id_t my_rpc_id;
 static hg_id_t my_rpc_shutdown_id;
 
 int main(int argc, char **argv) 
 {
-    struct run_my_rpc_args args[4];
-    ABT_thread threads[4];
+    struct lookup_args args[2];
+    ABT_thread threads[2];
+    hg_addr_t svr_addrs[2] = {HG_ADDR_NULL};
     int i;
     int ret;
     ABT_xstream xstream;
@@ -45,13 +36,11 @@ int main(int argc, char **argv)
     margo_instance_id mid;
     hg_context_t *hg_context;
     hg_class_t *hg_class;
-    hg_addr_t svr_addr = HG_ADDR_NULL;
-    hg_handle_t handle;
     char proto[12] = {0};
   
-    if(argc != 2)
+    if(argc != 3)
     {
-        fprintf(stderr, "Usage: ./client <server_addr>\n");
+        fprintf(stderr, "Usage: ./client <server_addr1> <server_addr2>\n");
         return(-1);
     }
        
@@ -113,40 +102,29 @@ int main(int argc, char **argv)
     mid = margo_init(0, 0, hg_context);
 
     /* register RPC */
-    my_rpc_id = MERCURY_REGISTER(hg_class, "my_rpc", my_rpc_in_t, my_rpc_out_t, 
-        NULL);
     my_rpc_shutdown_id = MERCURY_REGISTER(hg_class, "my_shutdown_rpc", void, void, 
         NULL);
 
-    /* find addr for server */
-    ret = margo_addr_lookup(mid, argv[1], &svr_addr);
-    assert(ret == 0);
-
-    for(i=0; i<4; i++)
+    /* issue concurrrent server lookups */
+    for(i=0; i<2; i++)
     {
-        args[i].val = i;
         args[i].mid = mid;
-        args[i].hg_class = hg_class;
-        args[i].hg_context = hg_context;
-        args[i].svr_addr = svr_addr;
+        args[i].addr_str = argv[i+1];
+        args[i].addr_p = &svr_addrs[i];
 
-        /* Each ult gets a pointer to an element of the array to use
-         * as input for the run_my_rpc() function.
-         */
-        ret = ABT_thread_create(pool, run_my_rpc, &args[i],
+        ret = ABT_thread_create(pool, lookup_ult, &args[i],
             ABT_THREAD_ATTR_NULL, &threads[i]);
         if(ret != 0)
         {
             fprintf(stderr, "Error: ABT_thread_create()\n");
             return(-1);
         }
-
     }
 
     /* yield to one of the threads */
     ABT_thread_yield_to(threads[0]);
 
-    for(i=0; i<4; i++)
+    for(i=0; i<2; i++)
     {
         ret = ABT_thread_join(threads[i]);
         if(ret != 0)
@@ -162,15 +140,8 @@ int main(int argc, char **argv)
         }
     }
 
-    /* send one rpc to server to shut it down */
-
-    /* create handle */
-    ret = HG_Create(hg_context, svr_addr, my_rpc_shutdown_id, &handle);
-    assert(ret == 0);
-
-    margo_forward(mid, handle, NULL);
-
-    HG_Addr_free(hg_class, svr_addr);
+    for(i=0; i<2; i++)
+        HG_Addr_free(hg_class, svr_addrs[i]);
 
     /* shut down everything */
     margo_finalize(mid);
@@ -183,55 +154,22 @@ int main(int argc, char **argv)
     return(0);
 }
 
-static void run_my_rpc(void *_arg)
+static void lookup_ult(void *arg)
 {
-    struct run_my_rpc_args *arg = _arg;
-    hg_handle_t handle;
-    my_rpc_in_t in;
-    my_rpc_out_t out;
-    int ret;
-    hg_size_t size;
-    void* buffer;
-    struct hg_info *hgi;
+    struct lookup_args *l = arg;
+    hg_return_t hret;
+    char tmp_addr_str[128] = {0};
+    hg_size_t tmp_addr_str_sz = 128;
 
-    printf("ULT [%d] running.\n", arg->val);
-
-    /* allocate buffer for bulk transfer */
-    size = 512;
-    buffer = calloc(1, 512);
-    assert(buffer);
-    sprintf((char*)buffer, "Hello world!\n");
-
-    /* create handle */
-    ret = HG_Create(arg->hg_context, arg->svr_addr, my_rpc_id, &handle);
-    assert(ret == 0);
-
-    /* register buffer for rdma/bulk access by server */
-    hgi = HG_Get_info(handle);
-    assert(hgi);
-    ret = HG_Bulk_create(hgi->hg_class, 1, &buffer, &size, 
-        HG_BULK_READ_ONLY, &in.bulk_handle);
-    assert(ret == 0);
-
-    /* Send rpc. Note that we are also transmitting the bulk handle in the
-     * input struct.  It was set above. 
-     */ 
-    in.input_val = arg->val;
-    margo_forward(arg->mid, handle, &in);
-
-    /* decode response */
-    ret = HG_Get_output(handle, &out);
-    assert(ret == 0);
-
-    printf("Got response ret: %d\n", out.ret);
-
-    /* clean up resources consumed by this rpc */
-    HG_Bulk_free(in.bulk_handle);
-    HG_Free_output(handle, &out);
-    HG_Destroy(handle);
-    free(buffer);
-
-    printf("ULT [%d] done.\n", arg->val);
-    return;
+    hret = margo_addr_lookup(l->mid, l->addr_str, l->addr_p);
+    if(hret != HG_SUCCESS)
+    {
+        fprintf(stderr, "Failed to lookup server %s\n", l->addr_str);
+    }
+    else
+    {
+        HG_Addr_to_string(margo_get_class(l->mid), tmp_addr_str,
+            &tmp_addr_str_sz, *(l->addr_p));
+        printf("%s -> %s\n", l->addr_str, tmp_addr_str);
+    }
 }
-
