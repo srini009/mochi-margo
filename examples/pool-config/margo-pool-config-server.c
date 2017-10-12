@@ -34,9 +34,9 @@ int main(int argc, char **argv)
 
     if(argc != 4)
     {
-        fprintf(stderr, "Usage: ./server <listen_addr> [0|1] [#]\n");
-        fprintf(stderr, "     [0|1] : disable/enable separate ES and pool for hg progress.\n");
-        fprintf(stderr, "     [#] : number of ES's in shared service pool.\n");
+        fprintf(stderr, "Usage: ./server <listen_addr> <0|1> <#>\n");
+        fprintf(stderr, "     <0|1> : disable/enable separate ES and pool for hg progress.\n");
+        fprintf(stderr, "     <#> : number of ES's in shared service pool.\n");
         fprintf(stderr, "Example: ./server na+sm:// 1 1\n");
         fprintf(stderr, "         (1 ES for progress, 1 ES for RPCs\n");
         fprintf(stderr, "Example: ./server na+sm:// 0 4\n");

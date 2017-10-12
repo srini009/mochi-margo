@@ -13,12 +13,6 @@
 
 #include "my-rpc.h"
 
-/* This is an example client program that issues 4 concurrent RPCs, each of
- * which includes a bulk transfer driven by the server.
- *
- * Each client operation executes as an independent ULT in Argobots.
- * The HG forward call is executed using asynchronous operations.
- */
 
 struct run_my_rpc_args
 {
@@ -34,8 +28,8 @@ static hg_id_t my_rpc_shutdown_id;
 
 int main(int argc, char **argv) 
 {
-    struct run_my_rpc_args args[4];
-    ABT_thread threads[4];
+    struct run_my_rpc_args *args;
+    ABT_thread *threads;
     int i;
     int ret;
     hg_return_t hret;
@@ -45,13 +39,23 @@ int main(int argc, char **argv)
     hg_addr_t svr_addr = HG_ADDR_NULL;
     hg_handle_t handle;
     char proto[12] = {0};
+    int concurrency = 0;
   
-    if(argc != 2)
+    if(argc != 3)
     {
-        fprintf(stderr, "Usage: ./client <server_addr>\n");
+        fprintf(stderr, "Usage: ./client <server_addr> <concurrency>\n");
         return(-1);
     }
+
+    ret = sscanf(argv[2], "%d", &concurrency);
+    assert(ret == 1);
+    assert(concurrency > 0);
        
+    args = malloc(sizeof(*args)*concurrency);
+    assert(args);
+    threads = malloc(sizeof(*threads)*concurrency);
+    assert(threads);
+
     /* initialize Mercury using the transport portion of the destination
      * address (i.e., the part before the first : character if present)
      */
@@ -95,7 +99,7 @@ int main(int argc, char **argv)
     hret = margo_addr_lookup(mid, argv[1], &svr_addr);
     assert(hret == HG_SUCCESS);
 
-    for(i=0; i<4; i++)
+    for(i=0; i<concurrency; i++)
     {
         args[i].val = i;
         args[i].mid = mid;
@@ -117,7 +121,7 @@ int main(int argc, char **argv)
     /* yield to one of the threads */
     ABT_thread_yield_to(threads[0]);
 
-    for(i=0; i<4; i++)
+    for(i=0; i<concurrency; i++)
     {
         ret = ABT_thread_join(threads[i]);
         if(ret != 0)
