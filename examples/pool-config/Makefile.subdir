@@ -1,4 +1,4 @@
-noinst_PROGRAMS += examples/pool-config/margo-pool-config-server examples/pool-config/margo-pool-config-client
+noinst_PROGRAMS += examples/pool-config/margo-pool-config-server examples/pool-config/margo-pool-config-client examples/pool-config/abt-pool-thread-sleep
 
 examples_pool_config_margo_pool_config_server_SOURCES = \
  examples/pool-config/margo-pool-config-server.c \
@@ -6,3 +6,6 @@ examples_pool_config_margo_pool_config_server_SOURCES = \
 
 examples_pool_config_margo_pool_config_client_SOURCES = \
  examples/pool-config/margo-pool-config-client.c
+
+examples_pool_config_abt_pool_thread_sleep_SOURCES = \
+ examples/pool-config/abt-pool-thread-sleep.c
