@@ -1,0 +1,8 @@
+noinst_PROGRAMS += examples/pool-config/margo-pool-config-server examples/pool-config/margo-pool-config-client
+
+examples_pool_config_margo_pool_config_server_SOURCES = \
+ examples/pool-config/margo-pool-config-server.c \
+ examples/pool-config/my-rpc.c 
+
+examples_pool_config_margo_pool_config_client_SOURCES = \
+ examples/pool-config/margo-pool-config-client.c
