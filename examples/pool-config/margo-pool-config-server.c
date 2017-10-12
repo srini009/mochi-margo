@@ -71,7 +71,9 @@ int main(int argc, char **argv)
                                ABT_SCHED_CONFIG_NULL, &scheds[i]);
     }
 
+    /* find self xstream */
     ABT_xstream_self(&xstream_self);
+
     if(!use_dedicated_progress_pool)
     {
         /* there is just one pool, and es[0] is self, es[1-n] created */
@@ -88,23 +90,19 @@ int main(int argc, char **argv)
         for (i = 0; i < shared_pool_size; i++) {
             ABT_xstream_create(scheds[i], &xstreams[i]);
         }
-        /* use self with default pool and scheduler for progress */
+        /* another pool with self and default scheduler/pool */
         ABT_xstream_get_main_pools(xstream_self, 1, &progress_pool);
     }
 
-#if 0
+    hg_class = HG_Init(argv[1], 1);
+    assert(hg_class);
 
-    /* actually start margo -- this step encapsulates the Mercury and
-     * Argobots initialization and must precede their use */
-    /* Use the calling xstream to drive progress and execute handlers. */
-    /***************************************/
-    mid = margo_init(argv[1], MARGO_SERVER_MODE, 0, -1);
-    if(mid == MARGO_INSTANCE_NULL)
-    {
-        fprintf(stderr, "Error: margo_init()\n");
-        return(-1);
-    }
-    
+    hg_context = HG_Context_create(hg_class);
+    assert(hg_context);
+
+    mid = margo_init_pool(progress_pool, shared_pool, hg_context);
+    assert(mid);
+
     /* figure out what address this server is listening on */
     hret = margo_addr_self(mid, &addr_self);
     if(hret != HG_SUCCESS)
@@ -127,15 +125,21 @@ int main(int argc, char **argv)
 
     /* register RPC */
     MARGO_REGISTER(mid, "my_rpc", my_rpc_in_t, my_rpc_out_t, my_rpc_ult);
-	MARGO_REGISTER(mid, "my_shutdown_rpc", void, void, my_rpc_shutdown_ult);
+    MARGO_REGISTER(mid, "my_shutdown_rpc", void, void, my_rpc_shutdown_ult);
 
     /* NOTE: there isn't anything else for the server to do at this point
      * except wait for itself to be shut down.  The
      * margo_wait_for_finalize() call here yields to let Margo drive
      * progress until that happens.
      */
+    
     margo_wait_for_finalize(mid);
-#endif
+
+    HG_Context_destroy(hg_context);
+
+    HG_Finalize(hg_class);
+
+    ABT_finalize();
 
     return(0);
 }
