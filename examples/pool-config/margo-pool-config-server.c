@@ -13,6 +13,8 @@
 
 #include "my-rpc.h"
 
+ABT_pool    shared_pool;
+
 int main(int argc, char **argv) 
 {
     hg_return_t hret;
@@ -25,7 +27,6 @@ int main(int argc, char **argv)
     ABT_xstream *xstreams;
     ABT_xstream xstream_self;
     ABT_sched   *scheds;
-    ABT_pool    shared_pool;
     ABT_pool    progress_pool;
     int i;
     hg_class_t *hg_class = NULL;

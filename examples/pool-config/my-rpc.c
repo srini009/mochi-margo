@@ -7,11 +7,13 @@
 #include <assert.h>
 #include "my-rpc.h"
 
-/* my-rpc:
- * This is an example RPC operation.  It includes a small bulk transfer, 
- * driven by the server, that moves data from the client to the server.  The
- * server writes the data to a local file in /tmp.
- */
+extern ABT_pool shared_pool;
+
+static void worker(void *_arg)
+{
+    /* TODO: do something here */
+    return;
+}
 
 /* The rpc handler is defined as a single ULT in Argobots.  It uses
  * underlying asynchronous operations for the HG transfer, open, write, and
@@ -27,14 +29,36 @@ static void my_rpc_ult(hg_handle_t handle)
     void *buffer;
     hg_bulk_t bulk_handle;
     const struct hg_info *hgi;
+    ABT_thread *threads;
+    int i;
+    int ret;
 
     margo_instance_id mid;
 
     hret = margo_get_input(handle, &in);
     assert(hret == HG_SUCCESS);
 
-    printf("Got RPC request with input_val: %d\n", in.input_val);
-    out.ret = 0;
+    if(in.num_threads)
+    {
+        /* spawn n threads based on client request */
+        threads = calloc(in.num_threads, sizeof(*threads));
+        assert(threads);
+        
+        for(i=0; i<in.num_threads; i++)
+        {
+            ret = ABT_thread_create(shared_pool, worker, NULL, ABT_THREAD_ATTR_NULL,
+                &threads[i]);
+            assert(ret == 0);
+        }
+       
+        /* wait for them to finish */
+        for(i=0; i<in.num_threads; i++)
+        {
+            ret = ABT_thread_join(threads[i]);
+            assert(ret == 0);
+        }
+        free(threads);
+    }
 
     /* set up target buffer for bulk transfer */
     size = 512;
@@ -59,6 +83,8 @@ static void my_rpc_ult(hg_handle_t handle)
     assert(hret == HG_SUCCESS);
 
     margo_free_input(handle, &in);
+
+    out.ret = 0;
 
     hret = margo_respond(handle, &out);
     assert(hret == HG_SUCCESS);

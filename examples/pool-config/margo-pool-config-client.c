@@ -27,7 +27,7 @@ static double wtime(void)
 
 struct run_my_rpc_args
 {
-    int val;
+    int num_threads;
     margo_instance_id mid;
     hg_addr_t svr_addr;
     int completed;
@@ -55,10 +55,11 @@ int main(int argc, char **argv)
     char proto[12] = {0};
     int concurrency = 0;
     double benchmark_seconds;
+    int num_threads;
   
-    if(argc != 4)
+    if(argc != 5)
     {
-        fprintf(stderr, "Usage: ./client <server_addr> <concurrency> <benchmark_seconds>\n");
+        fprintf(stderr, "Usage: ./client <server_addr> <concurrency> <benchmark_seconds> <worker_threads_per_svr_rpc>\n");
         return(-1);
     }
 
@@ -70,6 +71,10 @@ int main(int argc, char **argv)
     assert(ret == 1);
     assert(benchmark_seconds > 0.0);
       
+    ret = sscanf(argv[4], "%d", &num_threads);
+    assert(ret == 1);
+    assert(num_threads > -1);
+ 
     args = calloc(concurrency, sizeof(*args));
     assert(args);
     threads = calloc(concurrency, sizeof(*threads));
@@ -122,7 +127,7 @@ int main(int argc, char **argv)
 
     for(i=0; i<concurrency; i++)
     {
-        args[i].val = i;
+        args[i].num_threads = num_threads;
         args[i].mid = mid;
         args[i].svr_addr = svr_addr;
         args[i].benchmark_seconds = benchmark_seconds;
@@ -215,7 +220,7 @@ static void run_my_rpc(void *_arg)
         /* Send rpc. Note that we are also transmitting the bulk handle in the
          * input struct.  It was set above. 
          */ 
-        in.input_val = arg->val;
+        in.num_threads = arg->num_threads;
         hret = margo_forward(handle, &in);
         assert(hret == HG_SUCCESS);
 
@@ -232,8 +237,6 @@ static void run_my_rpc(void *_arg)
     margo_bulk_free(in.bulk_handle);
     margo_destroy(handle);
     free(buffer);
-
-    printf("ULT [%d] done.\n", arg->val);
 
     arg->end_time = wtime();
     return;
