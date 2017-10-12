@@ -27,11 +27,7 @@ static void my_rpc_ult(hg_handle_t handle)
     void *buffer;
     hg_bulk_t bulk_handle;
     const struct hg_info *hgi;
-#if 0
-    int ret;
-    int fd;
-    char filename[256];
-#endif
+
     margo_instance_id mid;
 
     hret = margo_get_input(handle, &in);
@@ -53,26 +49,14 @@ static void my_rpc_ult(hg_handle_t handle)
 
     /* register local target buffer for bulk access */
     hret = margo_bulk_create(mid, 1, &buffer,
-        &size, HG_BULK_WRITE_ONLY, &bulk_handle);
+        &size, HG_BULK_READ_ONLY, &bulk_handle);
     assert(hret == HG_SUCCESS);
 
     /* do bulk transfer from client to server */
-    hret = margo_bulk_transfer(mid, HG_BULK_PULL,
+    hret = margo_bulk_transfer(mid, HG_BULK_PUSH,
         hgi->addr, in.bulk_handle, 0,
         bulk_handle, 0, size);
     assert(hret == HG_SUCCESS);
-
-    /* write to a file; would be done with abt-io if we enabled it */
-#if 0
-    sprintf(filename, "/tmp/margo-%d.txt", in.input_val);
-    fd = abt_io_open(aid, filename, O_WRONLY|O_CREAT, S_IWUSR|S_IRUSR);
-    assert(fd > -1);
-
-    ret = abt_io_pwrite(aid, fd, buffer, 512, 0);
-    assert(ret == 512);
-
-    abt_io_close(aid, fd);
-#endif
 
     margo_free_input(handle, &in);
 

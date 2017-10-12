@@ -7,18 +7,32 @@
 #include <stdio.h>
 #include <assert.h>
 #include <unistd.h>
+#include <sys/time.h>
+
 #include <mercury.h>
 #include <abt.h>
 #include <margo.h>
 
 #include "my-rpc.h"
 
+double g_start_time = 0;
+ABT_mutex time_mutex;
+
+static double wtime(void)
+{
+    struct timeval t;
+    gettimeofday(&t, NULL);
+    return((double)t.tv_sec + (double)t.tv_usec / 1000000.0);
+}
 
 struct run_my_rpc_args
 {
     int val;
     margo_instance_id mid;
     hg_addr_t svr_addr;
+    int completed;
+    double end_time;
+    double benchmark_seconds;
 };
 
 static void run_my_rpc(void *_arg);
@@ -40,20 +54,25 @@ int main(int argc, char **argv)
     hg_handle_t handle;
     char proto[12] = {0};
     int concurrency = 0;
+    double benchmark_seconds;
   
-    if(argc != 3)
+    if(argc != 4)
     {
-        fprintf(stderr, "Usage: ./client <server_addr> <concurrency>\n");
+        fprintf(stderr, "Usage: ./client <server_addr> <concurrency> <benchmark_seconds>\n");
         return(-1);
     }
 
     ret = sscanf(argv[2], "%d", &concurrency);
     assert(ret == 1);
     assert(concurrency > 0);
-       
-    args = malloc(sizeof(*args)*concurrency);
+ 
+    ret = sscanf(argv[3], "%lf", &benchmark_seconds);
+    assert(ret == 1);
+    assert(benchmark_seconds > 0.0);
+      
+    args = calloc(concurrency, sizeof(*args));
     assert(args);
-    threads = malloc(sizeof(*threads)*concurrency);
+    threads = calloc(concurrency, sizeof(*threads));
     assert(threads);
 
     /* initialize Mercury using the transport portion of the destination
@@ -76,6 +95,8 @@ int main(int argc, char **argv)
         fprintf(stderr, "Error: margo_init()\n");
         return(-1);
     }
+
+    ABT_mutex_create(&time_mutex);
 
     /* retrieve current pool to use for ULT creation */
     ret = ABT_xstream_self(&xstream);
@@ -104,6 +125,7 @@ int main(int argc, char **argv)
         args[i].val = i;
         args[i].mid = mid;
         args[i].svr_addr = svr_addr;
+        args[i].benchmark_seconds = benchmark_seconds;
 
         /* Each ult gets a pointer to an element of the array to use
          * as input for the run_my_rpc() function.
@@ -149,6 +171,8 @@ int main(int argc, char **argv)
     margo_destroy(handle);
     margo_addr_free(mid, svr_addr);
 
+    ABT_mutex_free(&time_mutex);
+
     /* shut down everything */
     margo_finalize(mid);
 
@@ -165,43 +189,53 @@ static void run_my_rpc(void *_arg)
     hg_size_t size;
     void* buffer;
 
-    printf("ULT [%d] running.\n", arg->val);
+    ABT_mutex_lock(time_mutex);
+    if(g_start_time == 0)
+        g_start_time = wtime();
+    ABT_mutex_unlock(time_mutex);
 
     /* allocate buffer for bulk transfer */
     size = 512;
     buffer = calloc(1, 512);
     assert(buffer);
-    sprintf((char*)buffer, "Hello world!\n");
+
+    /* register buffer for rdma/bulk access by server */
+    hret = margo_bulk_create(arg->mid, 1, &buffer, &size, 
+        HG_BULK_WRITE_ONLY, &in.bulk_handle);
+    assert(hret == HG_SUCCESS);
 
     /* create handle */
     hret = margo_create(arg->mid, arg->svr_addr, my_rpc_id, &handle);
     assert(hret == HG_SUCCESS);
 
-    /* register buffer for rdma/bulk access by server */
-    hret = margo_bulk_create(arg->mid, 1, &buffer, &size, 
-        HG_BULK_READ_ONLY, &in.bulk_handle);
-    assert(hret == HG_SUCCESS);
+    /* continuously send rpcs for the duration of this benchmark */
+    while((wtime() - g_start_time) < arg->benchmark_seconds)
+    {
 
-    /* Send rpc. Note that we are also transmitting the bulk handle in the
-     * input struct.  It was set above. 
-     */ 
-    in.input_val = arg->val;
-    hret = margo_forward(handle, &in);
-    assert(hret == HG_SUCCESS);
+        /* Send rpc. Note that we are also transmitting the bulk handle in the
+         * input struct.  It was set above. 
+         */ 
+        in.input_val = arg->val;
+        hret = margo_forward(handle, &in);
+        assert(hret == HG_SUCCESS);
 
-    /* decode response */
-    hret = margo_get_output(handle, &out);
-    assert(hret == HG_SUCCESS);
+        /* decode response */
+        hret = margo_get_output(handle, &out);
+        assert(hret == HG_SUCCESS);
 
-    printf("Got response ret: %d\n", out.ret);
+        printf("Got response ret: %d\n", out.ret);
+        margo_free_output(handle, &out);
+        arg->completed++;
+    }
 
     /* clean up resources consumed by this rpc */
     margo_bulk_free(in.bulk_handle);
-    margo_free_output(handle, &out);
     margo_destroy(handle);
     free(buffer);
 
     printf("ULT [%d] done.\n", arg->val);
+
+    arg->end_time = wtime();
     return;
 }
 
