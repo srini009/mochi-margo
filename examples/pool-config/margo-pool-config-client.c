@@ -59,6 +59,8 @@ int main(int argc, char **argv)
     double start_time;
     long unsigned usec_per_worker_thread;
     int total_completed;
+    int min_completed;
+    int max_completed;
   
     if(argc != 6)
     {
@@ -173,6 +175,9 @@ int main(int argc, char **argv)
     end_time = args[0].end_time;
     start_time = args[0].start_time;
     total_completed = args[0].completed;
+    min_completed = args[0].completed;
+    max_completed = args[0].completed;
+    //printf("# 0 completed %d\n", args[0].completed);
     for(i=1; i<concurrency; i++)
     {
         /* which thread was first to start or last to finish? */
@@ -182,9 +187,16 @@ int main(int argc, char **argv)
             start_time = args[i].start_time;
 
         total_completed += args[i].completed;
+        if(min_completed > args[i].completed)
+            min_completed = args[i].completed;
+        if(max_completed < args[i].completed)
+            max_completed = args[i].completed;
+
+        //printf("# %d completed %d\n", i, args[i].completed);
     }
     
     printf("%f ops/s\n", ((double)total_completed)/(end_time-start_time));
+    printf("%f ratio of most busy to least busy ult\n", (double)max_completed / (double)min_completed);
 
     /* send one rpc to server to shut it down */
 
