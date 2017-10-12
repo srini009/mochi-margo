@@ -21,6 +21,7 @@ static void worker(void *_arg)
         req.tv_nsec = ((*usec_per_thread) % 1000000L) * 1000L;
         rem.tv_sec = 0;
         rem.tv_nsec = 0;
+        //printf("nanosleep %lu %lu\n", req.tv_sec, req.tv_nsec);
         nanosleep(&req, &rem);
     }
     

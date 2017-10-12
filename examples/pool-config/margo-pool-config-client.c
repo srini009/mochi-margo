@@ -15,9 +15,6 @@
 
 #include "my-rpc.h"
 
-double g_start_time = 0;
-ABT_mutex time_mutex;
-
 static double wtime(void)
 {
     struct timeval t;
@@ -32,6 +29,7 @@ struct run_my_rpc_args
     hg_addr_t svr_addr;
     int completed;
     double end_time;
+    double start_time;
     double benchmark_seconds;
     uint64_t usec_per_worker_thread;
 };
@@ -57,7 +55,10 @@ int main(int argc, char **argv)
     int concurrency = 0;
     double benchmark_seconds;
     int num_threads;
+    double end_time;
+    double start_time;
     long unsigned usec_per_worker_thread;
+    int total_completed;
   
     if(argc != 6)
     {
@@ -105,8 +106,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "Error: margo_init()\n");
         return(-1);
     }
-
-    ABT_mutex_create(&time_mutex);
 
     /* retrieve current pool to use for ULT creation */
     ret = ABT_xstream_self(&xstream);
@@ -170,6 +169,23 @@ int main(int argc, char **argv)
         }
     }
 
+    /* calculate throughput */
+    end_time = args[0].end_time;
+    start_time = args[0].start_time;
+    total_completed = args[0].completed;
+    for(i=1; i<concurrency; i++)
+    {
+        /* which thread was first to start or last to finish? */
+        if(end_time < args[i].end_time)
+            end_time = args[i].end_time;
+        if(start_time > args[i].start_time)
+            start_time = args[i].start_time;
+
+        total_completed += args[i].completed;
+    }
+    
+    printf("%f ops/s\n", ((double)total_completed)/(end_time-start_time));
+
     /* send one rpc to server to shut it down */
 
     /* create handle */
@@ -181,8 +197,6 @@ int main(int argc, char **argv)
 
     margo_destroy(handle);
     margo_addr_free(mid, svr_addr);
-
-    ABT_mutex_free(&time_mutex);
 
     /* shut down everything */
     margo_finalize(mid);
@@ -200,10 +214,7 @@ static void run_my_rpc(void *_arg)
     hg_size_t size;
     void* buffer;
 
-    ABT_mutex_lock(time_mutex);
-    if(g_start_time == 0)
-        g_start_time = wtime();
-    ABT_mutex_unlock(time_mutex);
+    arg->start_time = wtime();
 
     /* allocate buffer for bulk transfer */
     size = 512;
@@ -223,7 +234,7 @@ static void run_my_rpc(void *_arg)
     in.usec_per_thread = arg->usec_per_worker_thread;
 
     /* continuously send rpcs for the duration of this benchmark */
-    while((wtime() - g_start_time) < arg->benchmark_seconds)
+    while((wtime() - arg->start_time) < arg->benchmark_seconds)
     {
 
         /* Send rpc.  */ 
