@@ -14,6 +14,10 @@ static void worker(void *_arg)
 {
     uint64_t *usec_per_thread = _arg;
     struct timespec req, rem;
+    int ret;
+#if 0
+    ABT_xstream my_xstream;
+#endif
 
     if(*usec_per_thread > 0)
     {
@@ -21,8 +25,12 @@ static void worker(void *_arg)
         req.tv_nsec = ((*usec_per_thread) % 1000000L) * 1000L;
         rem.tv_sec = 0;
         rem.tv_nsec = 0;
-        //printf("nanosleep %lu %lu\n", req.tv_sec, req.tv_nsec);
-        nanosleep(&req, &rem);
+#if 0
+        ABT_xstream_self(&my_xstream);
+        printf("nanosleep %lu sec and %lu nsec on xstream %p\n", req.tv_sec, req.tv_nsec, my_xstream);
+#endif
+        ret = nanosleep(&req, &rem);
+        assert(ret == 0);
     }
     
     return;
