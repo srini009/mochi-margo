@@ -4,6 +4,7 @@
  * See COPYRIGHT in top-level directory.
  */
 
+#include <time.h>
 #include <assert.h>
 #include "my-rpc.h"
 
@@ -11,7 +12,18 @@ extern ABT_pool shared_pool;
 
 static void worker(void *_arg)
 {
-    /* TODO: do something here */
+    uint64_t *usec_per_thread = _arg;
+    struct timespec req, rem;
+
+    if(*usec_per_thread > 0)
+    {
+        req.tv_sec = (*usec_per_thread) / 1000000L;
+        req.tv_nsec = ((*usec_per_thread) % 1000000L) * 1000L;
+        rem.tv_sec = 0;
+        rem.tv_nsec = 0;
+        nanosleep(&req, &rem);
+    }
+    
     return;
 }
 
@@ -46,7 +58,7 @@ static void my_rpc_ult(hg_handle_t handle)
         
         for(i=0; i<in.num_threads; i++)
         {
-            ret = ABT_thread_create(shared_pool, worker, NULL, ABT_THREAD_ATTR_NULL,
+            ret = ABT_thread_create(shared_pool, worker, &in.usec_per_thread, ABT_THREAD_ATTR_NULL,
                 &threads[i]);
             assert(ret == 0);
         }

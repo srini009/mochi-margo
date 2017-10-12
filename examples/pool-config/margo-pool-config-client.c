@@ -33,6 +33,7 @@ struct run_my_rpc_args
     int completed;
     double end_time;
     double benchmark_seconds;
+    uint64_t usec_per_worker_thread;
 };
 
 static void run_my_rpc(void *_arg);
@@ -56,10 +57,11 @@ int main(int argc, char **argv)
     int concurrency = 0;
     double benchmark_seconds;
     int num_threads;
+    long unsigned usec_per_worker_thread;
   
-    if(argc != 5)
+    if(argc != 6)
     {
-        fprintf(stderr, "Usage: ./client <server_addr> <concurrency> <benchmark_seconds> <worker_threads_per_svr_rpc>\n");
+        fprintf(stderr, "Usage: ./client <server_addr> <concurrency> <benchmark_seconds> <worker_threads_per_svr_rpc> <usec_per_worker_thread>\n");
         return(-1);
     }
 
@@ -74,6 +76,9 @@ int main(int argc, char **argv)
     ret = sscanf(argv[4], "%d", &num_threads);
     assert(ret == 1);
     assert(num_threads > -1);
+    
+    ret = sscanf(argv[5], "%lu", &usec_per_worker_thread);
+    assert(ret == 1);
  
     args = calloc(concurrency, sizeof(*args));
     assert(args);
@@ -131,6 +136,7 @@ int main(int argc, char **argv)
         args[i].mid = mid;
         args[i].svr_addr = svr_addr;
         args[i].benchmark_seconds = benchmark_seconds;
+        args[i].usec_per_worker_thread = usec_per_worker_thread;
 
         /* Each ult gets a pointer to an element of the array to use
          * as input for the run_my_rpc() function.
@@ -213,14 +219,14 @@ static void run_my_rpc(void *_arg)
     hret = margo_create(arg->mid, arg->svr_addr, my_rpc_id, &handle);
     assert(hret == HG_SUCCESS);
 
+    in.num_threads = arg->num_threads;
+    in.usec_per_thread = arg->usec_per_worker_thread;
+
     /* continuously send rpcs for the duration of this benchmark */
     while((wtime() - g_start_time) < arg->benchmark_seconds)
     {
 
-        /* Send rpc. Note that we are also transmitting the bulk handle in the
-         * input struct.  It was set above. 
-         */ 
-        in.num_threads = arg->num_threads;
+        /* Send rpc.  */ 
         hret = margo_forward(handle, &in);
         assert(hret == HG_SUCCESS);
 
@@ -228,7 +234,6 @@ static void run_my_rpc(void *_arg)
         hret = margo_get_output(handle, &out);
         assert(hret == HG_SUCCESS);
 
-        printf("Got response ret: %d\n", out.ret);
         margo_free_output(handle, &out);
         arg->completed++;
     }
