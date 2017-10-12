@@ -1,4 +1,4 @@
-noinst_PROGRAMS += examples/pool-config/margo-pool-config-server examples/pool-config/margo-pool-config-client examples/pool-config/abt-pool-thread-sleep
+noinst_PROGRAMS += examples/pool-config/margo-pool-config-server examples/pool-config/margo-pool-config-client examples/pool-config/abt-pool-thread-sleep examples/pool-config/pthread-pool-thread-sleep
 
 examples_pool_config_margo_pool_config_server_SOURCES = \
  examples/pool-config/margo-pool-config-server.c \
@@ -9,3 +9,7 @@ examples_pool_config_margo_pool_config_client_SOURCES = \
 
 examples_pool_config_abt_pool_thread_sleep_SOURCES = \
  examples/pool-config/abt-pool-thread-sleep.c
+
+examples_pool_config_pthread_pool_thread_sleep_SOURCES = \
+ examples/pool-config/pthread-pool-thread-sleep.c
+examples_pool_config_pthread_pool_thread_sleep_LDADD = -lpthread
