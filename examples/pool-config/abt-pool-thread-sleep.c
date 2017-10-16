@@ -4,6 +4,8 @@
  * See COPYRIGHT in top-level directory.
  */
 
+#define SNOOZE 1
+
 #include <stdio.h>
 #include <assert.h>
 #include <unistd.h>
@@ -12,6 +14,9 @@
 #include <sys/time.h>
 
 #include <abt.h>
+#ifdef SNOOZE
+#include <abt-snoozer.h>
+#endif
 
 static double wtime(void)
 {
@@ -74,6 +79,11 @@ int main(int argc, char **argv)
     ret = ABT_init(argc, argv);
     assert(ret == 0);
 
+#ifdef SNOOZE
+    /* set primary ES to idle without polling in the scheduler */
+    ret = ABT_snoozer_xstream_self_set();
+#endif
+
     ret = sscanf(argv[1], "%d", &pool_size);
     assert(ret == 1);
     assert(pool_size > 0);
@@ -97,6 +107,11 @@ int main(int argc, char **argv)
     threads = calloc(thread_concurrency, sizeof(*threads));
     assert(threads);
 
+#ifdef SNOOZE
+    ret = ABT_snoozer_xstream_create(pool_size, &shared_pool,
+        xstreams);
+    assert(ret == 0);
+#else
     /* Create a shared pool */
     ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_MPMC,
                           ABT_TRUE, &shared_pool);
@@ -109,6 +124,7 @@ int main(int argc, char **argv)
     for (i = 0; i < pool_size; i++) {
         ABT_xstream_create(scheds[i], &xstreams[i]);
     }
+#endif
 
     start_ts = wtime();
 
