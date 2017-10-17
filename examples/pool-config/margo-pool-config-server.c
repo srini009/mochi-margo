@@ -11,7 +11,10 @@
 #include <abt.h>
 #include <margo.h>
 
+#if 0
 #define SNOOZE 1
+#define BUSY_MARGO 1
+#endif
 
 #ifdef SNOOZE
 #include <abt-snoozer.h>
@@ -118,6 +121,11 @@ int main(int argc, char **argv)
 
     mid = margo_init_pool(progress_pool, shared_pool, hg_context);
     assert(mid);
+
+#ifdef BUSY_MARGO
+    unsigned int timeout=0;
+    margo_set_param(mid, MARGO_PARAM_PROGRESS_TIMEOUT_UB, &timeout);
+#endif
 
     /* figure out what address this server is listening on */
     hret = margo_addr_self(mid, &addr_self);
