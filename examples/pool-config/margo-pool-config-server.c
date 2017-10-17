@@ -11,6 +11,12 @@
 #include <abt.h>
 #include <margo.h>
 
+#define SNOOZE 1
+
+#ifdef SNOOZE
+#include <abt-snoozer.h>
+#endif
+
 #include "my-rpc.h"
 
 ABT_pool    shared_pool;
@@ -49,6 +55,11 @@ int main(int argc, char **argv)
     ret = ABT_init(argc, argv);
     assert(ret == 0);
 
+#ifdef SNOOZE
+    /* set primary ES to idle without polling in the scheduler */
+    ret = ABT_snoozer_xstream_self_set();
+#endif
+
     ret = sscanf(argv[2], "%d", &use_dedicated_progress_pool);
     assert(ret == 1);
     assert(use_dedicated_progress_pool == 0 || use_dedicated_progress_pool == 1);
@@ -64,6 +75,11 @@ int main(int argc, char **argv)
 
     /* Create a shared pool */
     /********************************************/
+#ifdef SNOOZE
+    ret = ABT_snoozer_xstream_create(shared_pool_size, &shared_pool,
+        xstreams);
+    assert(ret == 0);
+#else
     ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_MPMC,
                           ABT_TRUE, &shared_pool);
     for (i = 0; i < shared_pool_size; i++) {
@@ -71,16 +87,23 @@ int main(int argc, char **argv)
                                ABT_SCHED_CONFIG_NULL, &scheds[i]);
         ABT_xstream_create(scheds[i], &xstreams[i]);
     }
+#endif
 
     /* create a progress pool (if requested */
     /*********************************************/
     if(use_dedicated_progress_pool)
     {
+#ifdef SNOOZE
+        ret = ABT_snoozer_xstream_create(1, &progress_pool,
+            &progress_xstream);
+        assert(ret == 0);
+#else
         ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_MPMC,
                               ABT_TRUE, &progress_pool);
         ABT_sched_create_basic(ABT_SCHED_DEFAULT, 1, &progress_pool,
                                ABT_SCHED_CONFIG_NULL, &progress_sched);
         ABT_xstream_create(progress_sched, &progress_xstream);
+#endif
     }
     else
     {
