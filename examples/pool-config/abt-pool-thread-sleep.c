@@ -4,7 +4,7 @@
  * See COPYRIGHT in top-level directory.
  */
 
-#define SNOOZE 1
+/* #define SNOOZE 1 */
 
 #include <stdio.h>
 #include <assert.h>
@@ -15,6 +15,8 @@
 #include <string.h>
 
 #include <abt.h>
+#include <margo.h>
+
 #ifdef SNOOZE
 #include <abt-snoozer.h>
 #endif
@@ -112,6 +114,9 @@ int main(int argc, char **argv)
     int max_real_concurrency;
     struct thread_state *state_array;
     int completed_sleeps = 0;
+    hg_class_t *hg_class = NULL;
+    hg_context_t *hg_context = NULL;
+    margo_instance_id mid;
 
     if(argc != 6)
     {
@@ -175,6 +180,15 @@ int main(int argc, char **argv)
         ABT_xstream_create(scheds[i], &xstreams[i]);
     }
 #endif
+
+    hg_class = HG_Init("sm://", 1);
+    assert(hg_class);
+
+    hg_context = HG_Context_create(hg_class);
+    assert(hg_context);
+
+    mid = margo_init_pool(shared_pool, shared_pool, hg_context);
+    assert(mid);
 
     start_ts = wtime();
 
