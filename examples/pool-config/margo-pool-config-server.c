@@ -25,9 +25,10 @@ int main(int argc, char **argv)
     int use_dedicated_progress_pool = 0;
     int shared_pool_size = 0;
     ABT_xstream *xstreams;
-    ABT_xstream xstream_self;
     ABT_sched   *scheds;
+    ABT_sched   progress_sched;
     ABT_pool    progress_pool;
+    ABT_xstream progress_xstream;
     int i;
     hg_class_t *hg_class = NULL;
     hg_context_t *hg_context = NULL;
@@ -62,37 +63,28 @@ int main(int argc, char **argv)
     assert(scheds);
 
     /* Create a shared pool */
+    /********************************************/
     ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_MPMC,
                           ABT_TRUE, &shared_pool);
-
-    /* Create schedulers for shared pool
-     */
     for (i = 0; i < shared_pool_size; i++) {
         ABT_sched_create_basic(ABT_SCHED_DEFAULT, 1, &shared_pool,
                                ABT_SCHED_CONFIG_NULL, &scheds[i]);
+        ABT_xstream_create(scheds[i], &xstreams[i]);
     }
 
-    /* find self xstream */
-    ABT_xstream_self(&xstream_self);
-
-    if(!use_dedicated_progress_pool)
+    /* create a progress pool (if requested */
+    /*********************************************/
+    if(use_dedicated_progress_pool)
     {
-        /* there is just one pool, and es[0] is self, es[1-n] created */
-        xstreams[0] = xstream_self;
-        ABT_xstream_set_main_sched(xstream_self, scheds[0]);
-        for (i = 1; i < shared_pool_size; i++) {
-            ABT_xstream_create(scheds[i], &xstreams[i]);
-        }
-        progress_pool = shared_pool;
+        ABT_pool_create_basic(ABT_POOL_FIFO, ABT_POOL_ACCESS_MPMC,
+                              ABT_TRUE, &progress_pool);
+        ABT_sched_create_basic(ABT_SCHED_DEFAULT, 1, &progress_pool,
+                               ABT_SCHED_CONFIG_NULL, &progress_sched);
+        ABT_xstream_create(progress_sched, &progress_xstream);
     }
     else
     {
-        /* a shared pool with n created es's */
-        for (i = 0; i < shared_pool_size; i++) {
-            ABT_xstream_create(scheds[i], &xstreams[i]);
-        }
-        /* another pool with self and default scheduler/pool */
-        ABT_xstream_get_main_pools(xstream_self, 1, &progress_pool);
+        progress_pool = shared_pool;
     }
 
     hg_class = HG_Init(argv[1], 1);
