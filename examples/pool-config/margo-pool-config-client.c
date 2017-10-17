@@ -109,6 +109,9 @@ int main(int argc, char **argv)
         return(-1);
     }
 
+    unsigned int timeout=0;
+    margo_set_param(mid, MARGO_PARAM_PROGRESS_TIMEOUT_UB, &timeout);
+
     /* retrieve current pool to use for ULT creation */
     ret = ABT_xstream_self(&xstream);
     if(ret != 0)
