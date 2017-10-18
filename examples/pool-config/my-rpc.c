@@ -47,8 +47,10 @@ static void my_rpc_ult(hg_handle_t handle)
     my_rpc_out_t out;
     my_rpc_in_t in;
     hg_size_t size;
+#ifdef DO_BULK
     void *buffer;
     hg_bulk_t bulk_handle;
+#endif
     const struct hg_info *hgi;
     ABT_thread *threads;
     int i;
@@ -81,10 +83,12 @@ static void my_rpc_ult(hg_handle_t handle)
         free(threads);
     }
 
+#ifdef DO_BULK
     /* set up target buffer for bulk transfer */
     size = 512;
     buffer = calloc(1, 512);
     assert(buffer);
+#endif
 
     /* get handle info and margo instance */
     hgi = margo_get_info(handle);
@@ -92,6 +96,7 @@ static void my_rpc_ult(hg_handle_t handle)
     mid = margo_hg_info_get_instance(hgi);
     assert(mid != MARGO_INSTANCE_NULL);
 
+#ifdef DO_BULK
     /* register local target buffer for bulk access */
     hret = margo_bulk_create(mid, 1, &buffer,
         &size, HG_BULK_READ_ONLY, &bulk_handle);
@@ -102,6 +107,7 @@ static void my_rpc_ult(hg_handle_t handle)
         hgi->addr, in.bulk_handle, 0,
         bulk_handle, 0, size);
     assert(hret == HG_SUCCESS);
+#endif
 
     margo_free_input(handle, &in);
 
@@ -110,9 +116,11 @@ static void my_rpc_ult(hg_handle_t handle)
     hret = margo_respond(handle, &out);
     assert(hret == HG_SUCCESS);
 
+#ifdef DO_BULK
     margo_bulk_free(bulk_handle);
-    margo_destroy(handle);
     free(buffer);
+#endif
+    margo_destroy(handle);
 
     return;
 }

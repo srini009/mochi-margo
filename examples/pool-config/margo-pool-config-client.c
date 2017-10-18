@@ -231,15 +231,18 @@ static void run_my_rpc(void *_arg)
 
     arg->start_time = wtime();
 
+#ifdef DO_BULK
     /* allocate buffer for bulk transfer */
     size = 512;
     buffer = calloc(1, 512);
     assert(buffer);
-
     /* register buffer for rdma/bulk access by server */
     hret = margo_bulk_create(arg->mid, 1, &buffer, &size, 
         HG_BULK_WRITE_ONLY, &in.bulk_handle);
     assert(hret == HG_SUCCESS);
+#else
+    in.bulk_handle = HG_BULK_NULL;
+#endif
 
     /* create handle */
     hret = margo_create(arg->mid, arg->svr_addr, my_rpc_id, &handle);
@@ -264,10 +267,12 @@ static void run_my_rpc(void *_arg)
         arg->completed++;
     }
 
+#ifdef DO_BULK
     /* clean up resources consumed by this rpc */
     margo_bulk_free(in.bulk_handle);
-    margo_destroy(handle);
     free(buffer);
+#endif
+    margo_destroy(handle);
 
     arg->end_time = wtime();
     return;
