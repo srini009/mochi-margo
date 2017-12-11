@@ -100,6 +100,78 @@ void margo_finalize(
 void margo_wait_for_finalize(
     margo_instance_id mid);
 
+/**
+ * Restart the progress loop after it has been stopped by a call to
+ * margo_progress_stop. The call will fail and return -1 if the progress
+ * loop is already running.
+ *
+ * A succeeding call to this function will also wake up threads blocked on
+ * margo_wait_for_progress_running().
+ *
+ * NOTE: The behavior of this function is undefined if another thread has
+ * called margo_finalize().
+ *
+ * @param mid Margo instance
+ *
+ * @return 0 on success, -1 on failure
+ */
+int margo_progress_restart(margo_instance_id mid);
+
+/**
+ * Stop the progress loop. The progress loop can be restarted using
+ * margo_progress_restart(). The call will fail and return -1 if
+ * the progress loop is already stopped. A succeeding call will also
+ * wake up threads blocked on margo_wait_for_progress_stopped().
+ *
+ * NOTE: The behavior of this function is undefined if another thread has
+ * called margo_finalize().
+ *
+ * @param mid Margo instance
+ *
+ * @return 0 on success, -1 on failure
+ */
+int margo_progress_stop(margo_instance_id mid);
+
+/**
+ * Check if the progress loop is currently running.
+ *
+ * @param [in] mid Margo instance
+ * @param [out] flag 1 if the loop is running, 0 otherwise
+ *
+ * @return 0 on success, -1 if mid is not valid
+ */
+int margo_progress_is_running(margo_instance_id mid, int* flag);
+
+/**
+ * If the progress loop is currently running, suspends the 
+ * calling ULT until the progress loop is stopped by another
+ * thread calling margo_progress_stop(). If the progress loop
+ * is not running, this function simply returns.
+ *
+ * NOTE: the behavior of this function is undefined if another
+ * thread calls margo_finalize. ULTs waiting for the progress
+ * loop to be stopped and for Margo to be finalized should call
+ * margo_wait_for_finalize().
+ *
+ * @param mid Margo instance
+ */
+void margo_wait_for_progress_stopped(margo_instance_id mid);
+
+/**
+ * If the progress loop is currently paused, suspends the calling
+ * ULT until the progress loop is restarted by another thread
+ * calling margo_progress_restart(). It the progress loop is
+ * already running, this function simply returns.
+ *
+ * NOTE: the behavior of this function is undefined if another
+ * thread calls margo_finalize. ULTs waiting for the progress
+ * loop to be stopped and for Margo to be finalized should call
+ * margo_wait_for_finalize().
+ *
+ * @param mid Margo instance
+ */
+void margo_wait_for_progress_running(margo_instance_id mid);
+
 /** 
  * Registers an RPC with margo
  *

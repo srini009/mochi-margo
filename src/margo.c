@@ -61,6 +61,12 @@ struct margo_handle_cache_el
     struct margo_handle_cache_el *next; /* free list link */
 };
 
+typedef enum {
+    PR_LOOP_RUNNING   = 0,
+    PR_LOOP_PAUSED    = 1,
+    PR_LOOP_FINALIZED = 2
+} progress_loop_state_t;
+
 struct margo_instance
 {
     /* mercury/argobots state */
@@ -73,18 +79,21 @@ struct margo_instance
     int margo_init;
     int abt_init;
     ABT_thread hg_progress_tid;
+#if 0
     int hg_progress_shutdown_flag;
+#endif
+    int hg_progress_break_flag;
     ABT_xstream progress_xstream;
     int owns_progress_pool;
     ABT_xstream *rpc_xstreams;
     int num_handler_pool_threads;
     unsigned int hg_progress_timeout_ub;
 
-    /* control logic for callers waiting on margo to be finalized */
-    int finalize_flag;
-    int refcount;
-    ABT_mutex finalize_mutex;
-    ABT_cond finalize_cond;
+    /* control logic for callers waiting on margo to be finalized or paused*/
+    progress_loop_state_t pr_loop_state;
+    int refcount; // count of ULTs waiting to be awaken by margo (cannot finalize until it reaches 0)
+    ABT_mutex pr_loop_state_mutex;
+    ABT_cond pr_loop_state_cond;
 
     /* hash table to track multiplexed rpcs registered with margo */
     struct mplex_element *mplex_table;
@@ -227,8 +236,8 @@ err:
     if(mid)
     {
         margo_timer_instance_finalize(mid);
-        ABT_mutex_free(&mid->finalize_mutex);
-        ABT_cond_free(&mid->finalize_cond);
+        ABT_mutex_free(&mid->pr_loop_state_mutex);
+        ABT_cond_free(&mid->pr_loop_state_cond);
         free(mid);
     }
     if (use_progress_thread && progress_xstream != ABT_XSTREAM_NULL)
@@ -265,8 +274,8 @@ margo_instance_id margo_init_pool(ABT_pool progress_pool, ABT_pool handler_pool,
     if(!mid) goto err;
     memset(mid, 0, sizeof(*mid));
 
-    ABT_mutex_create(&mid->finalize_mutex);
-    ABT_cond_create(&mid->finalize_cond);
+    ABT_mutex_create(&(mid->pr_loop_state_mutex));
+    ABT_cond_create(&(mid->pr_loop_state_cond));
 
     mid->progress_pool = progress_pool;
     mid->handler_pool = handler_pool;
@@ -282,8 +291,10 @@ margo_instance_id margo_init_pool(ABT_pool progress_pool, ABT_pool handler_pool,
     hret = margo_handle_cache_init(mid);
     if(hret != HG_SUCCESS) goto err;
 
+    mid->pr_loop_state = PR_LOOP_RUNNING;
     ret = ABT_thread_create(mid->progress_pool, hg_progress_fn, mid, 
         ABT_THREAD_ATTR_NULL, &mid->hg_progress_tid);
+
     if(ret != 0) goto err;
 
     return mid;
@@ -293,8 +304,8 @@ err:
     {
         margo_handle_cache_destroy(mid);
         margo_timer_instance_finalize(mid);
-        ABT_mutex_free(&mid->finalize_mutex);
-        ABT_cond_free(&mid->finalize_cond);
+        ABT_mutex_free(&mid->pr_loop_state_mutex);
+        ABT_cond_free(&mid->pr_loop_state_cond);
         free(mid);
     }
     return MARGO_INSTANCE_NULL;
@@ -306,8 +317,8 @@ static void margo_cleanup(margo_instance_id mid)
 
     margo_timer_instance_finalize(mid);
 
-    ABT_mutex_free(&mid->finalize_mutex);
-    ABT_cond_free(&mid->finalize_cond);
+    ABT_mutex_free(&mid->pr_loop_state_mutex);
+    ABT_cond_free(&mid->pr_loop_state_cond);
 
     if (mid->owns_progress_pool)
     {
@@ -344,21 +355,16 @@ void margo_finalize(margo_instance_id mid)
 {
     int do_cleanup;
 
-    /* tell progress thread to wrap things up */
-    mid->hg_progress_shutdown_flag = 1;
+    margo_progress_stop(mid);
 
-    /* wait for it to shutdown cleanly */
-    ABT_thread_join(mid->hg_progress_tid);
-    ABT_thread_free(&mid->hg_progress_tid);
-
-    ABT_mutex_lock(mid->finalize_mutex);
-    mid->finalize_flag = 1;
-    ABT_cond_broadcast(mid->finalize_cond);
+    ABT_mutex_lock(mid->pr_loop_state_mutex);
+    mid->pr_loop_state = PR_LOOP_FINALIZED;
+    ABT_cond_broadcast(mid->pr_loop_state_cond);
 
     mid->refcount--;
     do_cleanup = mid->refcount == 0;
 
-    ABT_mutex_unlock(mid->finalize_mutex);
+    ABT_mutex_unlock(mid->pr_loop_state_mutex);
 
     /* if there was noone waiting on the finalize at the time of the finalize
      * broadcast, then we're safe to clean up. Otherwise, let the finalizer do
@@ -373,22 +379,98 @@ void margo_wait_for_finalize(margo_instance_id mid)
 {
     int do_cleanup;
 
-    ABT_mutex_lock(mid->finalize_mutex);
+    ABT_mutex_lock(mid->pr_loop_state_mutex);
 
         mid->refcount++;
             
-        while(!mid->finalize_flag)
-            ABT_cond_wait(mid->finalize_cond, mid->finalize_mutex);
+        while(mid->pr_loop_state != PR_LOOP_FINALIZED)
+            ABT_cond_wait(mid->pr_loop_state_cond, mid->pr_loop_state_mutex);
 
         mid->refcount--;
         do_cleanup = mid->refcount == 0;
 
-    ABT_mutex_unlock(mid->finalize_mutex);
+    ABT_mutex_unlock(mid->pr_loop_state_mutex);
 
     if (do_cleanup)
         margo_cleanup(mid);
 
     return;
+}
+
+int margo_progress_restart(margo_instance_id mid)
+{
+    if(mid == MARGO_INSTANCE_NULL) return -1;
+
+    int ret = 0;
+
+    ABT_mutex_lock(mid->pr_loop_state_mutex);
+
+        if(mid->pr_loop_state != PR_LOOP_PAUSED) {
+            ret = -1; // not allowed to start after someone called margo_finalize
+            // or if the if the margo is the progress loop is already running
+        } else {
+                ret = ABT_thread_revive(mid->progress_pool, hg_progress_fn, mid,
+                        &mid->hg_progress_tid);
+            if(ret == 0) {
+                mid->pr_loop_state = PR_LOOP_RUNNING;
+            } else {
+                ret = -1;
+            }
+        }
+
+    ABT_mutex_unlock(mid->pr_loop_state_mutex);
+
+    return ret;
+}
+
+int margo_progress_stop(margo_instance_id mid)
+{
+    if(mid == MARGO_INSTANCE_NULL) return -1;
+
+    int ret = 0;
+    ABT_mutex_lock(mid->pr_loop_state_mutex);
+        
+        if(mid->pr_loop_state != PR_LOOP_RUNNING) { // already stopped or finalized
+            ret = -1;
+        } else {
+            mid->hg_progress_break_flag = 1;
+            while(mid->pr_loop_state == PR_LOOP_RUNNING)
+                ABT_cond_wait(mid->pr_loop_state_cond, mid->pr_loop_state_mutex);
+        }
+
+    ABT_mutex_unlock(mid->pr_loop_state_mutex);
+    if(ret == 0) ABT_thread_join(mid->hg_progress_tid);
+
+    return ret;
+}
+
+void margo_wait_for_progress_stopped(margo_instance_id mid) 
+{
+    ABT_mutex_lock(mid->pr_loop_state_mutex);
+
+        while(mid->pr_loop_state == PR_LOOP_RUNNING)
+            ABT_cond_wait(mid->pr_loop_state_cond, mid->pr_loop_state_mutex);
+
+    ABT_mutex_unlock(mid->pr_loop_state_mutex);
+}
+
+void margo_wait_for_progress_running(margo_instance_id mid) 
+{
+    ABT_mutex_lock(mid->pr_loop_state_mutex);
+
+        while(mid->pr_loop_state != PR_LOOP_RUNNING)
+            ABT_cond_wait(mid->pr_loop_state_cond, mid->pr_loop_state_mutex);
+
+    ABT_mutex_unlock(mid->pr_loop_state_mutex);
+}
+
+int margo_progress_is_running(margo_instance_id mid, int* flag)
+{
+    if(mid == MARGO_INSTANCE_NULL) return -1;
+
+    *flag = (mid->pr_loop_state == PR_LOOP_RUNNING);
+
+    return 0;
 }
 
 hg_id_t margo_register_name(margo_instance_id mid, const char *func_name,
@@ -967,7 +1049,13 @@ static void hg_progress_fn(void* foo)
     double tm1, tm2;
     int diag_enabled = 0;
 
-    while(!mid->hg_progress_shutdown_flag)
+    ABT_mutex_lock(mid->pr_loop_state_mutex);
+        mid->pr_loop_state = PR_LOOP_RUNNING;
+        mid->hg_progress_break_flag = 0;
+        ABT_cond_broadcast(mid->pr_loop_state_cond);
+    ABT_mutex_unlock(mid->pr_loop_state_mutex);
+
+    while(!mid->hg_progress_break_flag)
     {
         trigger_happened = 0;
         do {
@@ -986,7 +1074,7 @@ static void hg_progress_fn(void* foo)
 
             if(ret == HG_SUCCESS && actual_count > 0)
                 trigger_happened = 1;
-        } while((ret == HG_SUCCESS) && actual_count && !mid->hg_progress_shutdown_flag);
+        } while((ret == HG_SUCCESS) && actual_count && !mid->hg_progress_break_flag);
 
         if(trigger_happened)
             ABT_thread_yield();
@@ -1074,6 +1162,11 @@ static void hg_progress_fn(void* foo)
         /* check for any expired timers */
         margo_check_timers(mid);
     }
+
+    ABT_mutex_lock(mid->pr_loop_state_mutex);
+        mid->pr_loop_state = PR_LOOP_PAUSED;
+        ABT_cond_broadcast(mid->pr_loop_state_cond);
+    ABT_mutex_unlock(mid->pr_loop_state_mutex);
 
     return;
 }
