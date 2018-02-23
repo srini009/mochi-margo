@@ -72,7 +72,6 @@ int main(int argc, char **argv)
         fprintf(stderr, "Error: margo_init()\n");
         return(-1);
     }
-    margo_diag_start(mid);
 
     /* retrieve current pool to use for ULT creation */
     ret = ABT_xstream_self(&xstream);
@@ -147,7 +146,6 @@ int main(int argc, char **argv)
     margo_addr_free(mid, svr_addr);
 
     /* shut down everything */
-    margo_diag_dump(mid, "-", 0);
     margo_finalize(mid);
 
     return(0);
@@ -162,6 +160,7 @@ static void run_my_rpc(void *_arg)
     hg_return_t hret;
     hg_size_t size;
     void* buffer;
+    int i;
 
     printf("ULT [%d] running.\n", arg->val);
 
@@ -180,22 +179,29 @@ static void run_my_rpc(void *_arg)
         HG_BULK_READ_ONLY, &in.bulk_handle);
     assert(hret == HG_SUCCESS);
 
-    /* Send rpc. Note that we are also transmitting the bulk handle in the
-     * input struct.  It was set above. 
-     */ 
-    in.input_val = arg->val;
-    hret = margo_forward(handle, &in);
-    assert(hret == HG_SUCCESS);
+    /* send many rpcs */
+    for(i=0; i<10000; i++)
+    {
+        HG_Reset(handle, arg->svr_addr, my_rpc_id);
 
-    /* decode response */
-    hret = margo_get_output(handle, &out);
-    assert(hret == HG_SUCCESS);
+        /* Send rpc. Note that we are also transmitting the bulk handle in the
+         * input struct.  It was set above. 
+         */ 
+        in.input_val = arg->val;
+        hret = margo_forward(handle, &in);
+        assert(hret == HG_SUCCESS);
 
-    printf("Got response ret: %d\n", out.ret);
+        /* decode response */
+        hret = margo_get_output(handle, &out);
+        assert(hret == HG_SUCCESS);
+
+        // printf("Got response ret: %d\n", out.ret);
+    
+        margo_free_output(handle, &out);
+    }
 
     /* clean up resources consumed by this rpc */
     margo_bulk_free(in.bulk_handle);
-    margo_free_output(handle, &out);
     margo_destroy(handle);
     free(buffer);
 

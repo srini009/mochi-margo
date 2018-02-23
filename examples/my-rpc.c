@@ -37,7 +37,7 @@ static void my_rpc_ult(hg_handle_t handle)
     hret = margo_get_input(handle, &in);
     assert(hret == HG_SUCCESS);
 
-    printf("Got RPC request with input_val: %d\n", in.input_val);
+    //printf("Got RPC request with input_val: %d\n", in.input_val);
     out.ret = 0;
 
     /* set up target buffer for bulk transfer */
@@ -102,8 +102,6 @@ static void my_rpc_shutdown_ult(hg_handle_t handle)
     assert(hret == HG_SUCCESS);
 
     margo_destroy(handle);
-
-    margo_diag_dump(mid, "-", 0);
 
     /* NOTE: we assume that the server daemon is using
      * margo_wait_for_finalize() to suspend until this RPC executes, so there

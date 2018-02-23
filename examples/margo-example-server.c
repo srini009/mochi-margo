@@ -24,25 +24,45 @@ int main(int argc, char **argv)
     hg_addr_t addr_self;
     char addr_self_string[128];
     hg_size_t addr_self_string_sz = 128;
+    int ret;
+    int num_rpc_threads;
+    int dedicated_progress;
 
-    if(argc != 2)
+    if(argc != 4)
     {
-        fprintf(stderr, "Usage: ./server <listen_addr>\n");
-        fprintf(stderr, "Example: ./server na+sm://\n");
+        fprintf(stderr, "Usage: ./server <listen_addr> <dedicated_progress?> <num_rpc_threads>\n");
+        fprintf(stderr, "Example: ./server na+sm:// 0 -1\n");
         return(-1);
     }
 
+    ret = sscanf(argv[2], "%d", &dedicated_progress);
+    if(ret != 1)
+    {
+        fprintf(stderr, "Usage: ./server <listen_addr> <dedicated_progress?> <num_rpc_threads>\n");
+        fprintf(stderr, "Example: ./server na+sm:// 0 0 -1\n");
+        return(-1);
+    }
+
+    ret = sscanf(argv[3], "%d", &num_rpc_threads);
+    if(ret != 1)
+    {
+        fprintf(stderr, "Usage: ./server <listen_addr> <dedicated_progress?> <num_rpc_threads>\n");
+        fprintf(stderr, "Example: ./server na+sm:// 0 0 -1\n");
+        return(-1);
+    }
+    
     /* actually start margo -- this step encapsulates the Mercury and
      * Argobots initialization and must precede their use */
-    /* Use the calling xstream to drive progress and execute handlers. */
+    /* NOTE: for debugging #40, use dedicate progress thread and N rpc
+     * threads
+     */
     /***************************************/
-    mid = margo_init(argv[1], MARGO_SERVER_MODE, 0, -1);
+    mid = margo_init(argv[1], MARGO_SERVER_MODE, dedicated_progress, num_rpc_threads);
     if(mid == MARGO_INSTANCE_NULL)
     {
         fprintf(stderr, "Error: margo_init()\n");
         return(-1);
     }
-    margo_diag_start(mid);
     
     /* figure out what address this server is listening on */
     hret = margo_addr_self(mid, &addr_self);
