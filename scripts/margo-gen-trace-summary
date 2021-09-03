@@ -1,0 +1,461 @@
+#!/usr/bin/env python
+# (C) 2015 The University of Chicago
+#
+# See COPYRIGHT in top-level directory.
+# 
+
+import matplotlib
+matplotlib.use("Agg")
+import base64
+import matplotlib.pyplot as plt; plt.rcdefaults()
+import numpy as np
+from matplotlib.backends.backend_pdf import PdfPages
+import operator
+import sys
+import os
+import glob, re
+import random
+from collections import defaultdict, OrderedDict
+
+time_delta = 0.001
+global_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+global_hostcolor = dict()
+global_start_time = sys.float_info.max
+global_end_time = 0.0
+
+class Event:
+	def __init__(self, ts, pool_size, blocked_tasks, ev, mid, order, rpc, max_rss, pid, ofi_events_read, bw, bw_start, bw_end, op_bw, op_start, op_end):
+		self.ts = ts
+		self.pool_size = pool_size
+		self.blocked_tasks = blocked_tasks
+		self.ev = ev
+		self.mid = mid
+		self.rpc = rpc
+		self.order = order
+		self.max_rss = max_rss
+		self.pid = pid
+		self.ofi_events_read = ofi_events_read
+		self.bw = bw
+		self.bw_start = bw_start
+		self.bw_end = bw_end
+		self.op_bw = op_bw
+		self.op_start = op_start
+		self.op_end = op_end
+
+class Span:
+	def __init__(self, name, id_, service_name, start_ts, end_ts, ts, start_type, end_type, address, parent_span):
+		self.ts = ts
+		self.start_ts = start_ts
+		self.address = address
+		self.end_ts = end_ts
+		self.start_type = start_type
+		self.end_type = end_type
+		self.name = name
+		self.service_name = service_name
+		self.id = id_
+		self.parent_span = parent_span
+		self.duration = (end_ts - start_ts)
+
+class Request:
+
+	def __init__(self, req_id, sorted_event_list, op, latency, pid):
+		self.req_id = req_id
+		self.sorted_event_list = sorted_event_list
+		self.op = op
+		self.latency = latency
+		self.pid = pid
+
+	def get_type_string(self, type_):
+		if(type_ == 0):
+			return "cs"
+		elif(type_ == 1):
+			return "sr"
+		elif(type_ == 2):
+			return "ss"
+		elif(type_ == 3):
+			return "cr"
+
+	def __generatenextspan(self, start, end, name, id_, pidtohost, parent_span):
+		service_name = (name.split("_"))[0]
+		if(start.ev == 0):
+			service_name += "_CLIENT"
+		else:
+			service_name += "_SERVER"
+		address = pidtohost[int(start.pid)]
+		return Span(name, id_, service_name, start.ts, end.ts, start.ts, self.get_type_string(start.ev), self.get_type_string(end.ev), address, parent_span) 
+		
+	def generatespanlist(self, rpc2name, pidtohost, debug=False):
+		spanlist = []
+		current_event_list = self.sorted_event_list[:]
+		span_id_ = 0
+		level_map = dict()
+		num_half_peels = 0
+		num_full_peels = 0
+			
+		while(len(current_event_list) > 0 and (len(current_event_list) % 2 == 0)): #Some sanity checking is required because of poor trace quality in some scenarios
+			start_ev = current_event_list[0]
+			if debug == True:
+				print ("Start is ", start_ev.ev, rpc2name.get(int(start_ev.rpc), "UNKNOWN_RPC_OP"))
+			end_ev_index = -1
+			for index, ev in enumerate(current_event_list[1:]):
+				if debug == True:
+					print ("Event encountered ", ev.ev, rpc2name.get(int(ev.rpc), "UNKNOWN_RPC_OP"), " at index ", index, " and order ", ev.order)
+				if(start_ev.ev == 0):
+					if (ev.rpc == start_ev.rpc) and (ev.mid == start_ev.mid) and (ev.ev == 3):
+						end_ev_index = index
+						break
+				elif(start_ev.ev == 1):
+					if (ev.rpc == start_ev.rpc) and (ev.ev == 2):
+						end_ev_index = index
+						break
+			if (end_ev_index == -1):
+				current_event_list.pop(0)
+				continue
+			end_ev = current_event_list[end_ev_index+1]	
+			if debug == True:
+				print ("End is ", end_ev.ev, rpc2name.get(int(end_ev.rpc), "UNKNOWN_RPC_OP"))
+			name = rpc2name.get(int(start_ev.rpc), "UNKNOWN_RPC_OP")
+			span_id = str(span_id_) + "_" + str(self.req_id)
+
+			#Find parent span by iterating through already seen spans
+			#and finding the span with the end index closest to current span's end index
+			parent_span = -1
+			diff = 1000000
+			#Store actual end index in the level map
+			level_map[span_id_] =  num_half_peels + 2*num_full_peels + (end_ev_index + 1)
+			if debug == True:
+				print ("Level map is ",  level_map[span_id_], " half peels, ", num_half_peels, ", full peels ", num_full_peels)
+
+			for s, end in level_map.items():
+				diff_ = (end - level_map[span_id_])
+				if debug == True:
+					print "Current span id_, current diff, potential parent ", span_id_, diff, s
+				if((diff_ > 0) and diff_ < diff):
+					diff = diff_
+					parent_span = s
+
+			level_map[span_id_] =  num_half_peels + 2*num_full_peels + (end_ev_index + 1)
+
+			if(end_ev_index != 0):
+				num_half_peels += 1
+			else:
+				num_full_peels += 1
+			
+			spanlist.append(self.__generatenextspan(start_ev, end_ev, name, span_id, pidtohost, parent_span))
+			current_event_list.pop(0)
+			current_event_list.pop(end_ev_index)
+			span_id_ += 1
+
+		return spanlist
+		
+		
+
+class RequestOpMetadata:
+	
+	latency_std = 0.0
+	latency_average = 0.0
+
+	def __init__(self, op, time_series_data):
+		self.op = op
+		self.time_series_data = time_series_data
+
+	def calculatestats(self):
+		latency_arr = []
+		for i in self.time_series_data:
+			ts = i[0]
+			latency = i[1][0]
+			latency_arr.append(latency)
+
+		self.latency_std = np.std(latency_arr)
+		self.latency_average = np.mean(latency_arr)
+		
+	def graphtimeseriesinfo(self, tt, rpc2name, pidtohost):
+		area = np.pi*3
+		names = [ 'latency (s)', 'max_rss (KB)', 'tasks_eligible_to_run', 'blocked_tasks', 'num_ofi_events_read']
+		start_time = self.time_series_data[0][0]
+
+		fig, ax = plt.subplots(len(names)+1, figsize=(15,15))
+		plt.subplots_adjust(hspace=0.3)
+		fig.suptitle('Time Series for Op: ' + rpc2name.get(int(self.op), "UNKNOWN_RPC_OP"), fontsize=20, fontweight='bold')
+		txt = " latency = Total response time for request initiated at given timestamp.\n    Legend indicates the node first contacted for servicing the request from an end-client. \n \
+max_rss = Maximum of resident set size highwatermark (from getrusage) for all instrumentation points in the path of the request.\n    Legend indicates the node with this associated value. \n \
+tasks_eligible_to_run (abt_pool_size) = Maximum value of abt_pool_size across all instrumentation points in the path of the request.\n    Legend indicates the node with this associated value. \n \
+blocked tasks (abt_total_pool_size - abt_pool_size) = Maximum value for total blocked tasks all instrumentation points in the path of the request.\n    Legend indicates the node with this associated value. \n \
+num_ofi_events_read = Most recent number of OFI events read by progress engine when response was received by client\n    Legend indicates the node first contacted for servicing the request from an end-client."
+
+		ax[0].text(0, 0.5, txt, style='italic',
+			bbox={'facecolor': 'red', 'alpha': 0.5, 'pad': 10}, horizontalalignment='left')
+		ax[0].set_xticks([])
+		ax[0].set_yticks([])
+		for k1, v1 in ax[0].spines.items():
+			v1.set_visible(False)
+
+		max_ts = []
+		for g in range(0,len(names)):
+			host_ts = defaultdict(list)
+			host_val = defaultdict(list)
+			for i in self.time_series_data:
+				host_ts[str(i[g+1][1])].append(i[0] - start_time)
+				host_val[str(i[g+1][1])].append(i[g+1][0])
+
+			# Plot
+			for host in host_ts.keys():
+				ts = host_ts[host]
+				val = host_val[host]
+				ax[g+1].scatter(ts, val, s=area, c=np.random.rand(3,), alpha=0.6, edgecolors='none')
+				max_ts.append(max(ts))
+			#else:
+			#	for host in host_ts.keys():
+			#		ts = host_ts[host]
+			#		val = host_val[host]
+			#		ax[g+1].scatter(ts, val, s=area, c=global_hostcolor[host], label=host, alpha=0.6, edgecolors='none')
+			#		max_ts.append(max(ts))
+			#		ax[g+1].legend(loc='upper left')
+				
+			ax[g+1].set_xlim(0, max(max_ts)*1.05)
+			ax[g+1].set_xlabel('timestamp (s)')
+			ax[g+1].set_ylabel(names[g])
+		plt.savefig(tt, format='pdf')
+		plt.close()
+		
+	
+class TraceGenerator:
+	def __init__(self):
+		self.name = "MargoTraceGenerator"
+		self.rpc2name = dict()
+		self.event_dict = defaultdict(list)
+		self.request_list = list()
+		self.request_op_metadata_list = list()
+		self.pidtohost = dict()
+		self.hosts = set()
+		self.host_bw_raw_data = defaultdict(list)
+		self.host_op_bw_raw_data = defaultdict(list)
+		self.tt = PdfPages('trace.pdf')
+
+	# Read all the trace files and gather a list of events for every unique request in the trace file
+	def readfiles(self):
+		files = glob.glob(str(os.getcwd())+"/*.trace") #Read all *.trace files in CURRENT_WORKING_DIRECTORY
+		for f in files:
+			f1 = open(f, "r")
+			contents = f1.readlines()
+			hostname = contents[0] #First line is always hostname
+			self.hosts.add(str(hostname))
+			if ((str(hostname) not in global_hostcolor) and (len(self.hosts) < 9)):
+				global_hostcolor[str(hostname)] = global_colors[len(self.hosts)]
+			pid = contents[1] #Second line is always pid
+			self.pidtohost[int(pid)] = (str(hostname))
+			num_registered_rpcs = int(contents[2]) #First line is always number of RPC's registered with the margo instance generating this file
+			rpc_contents = contents[3:3 + num_registered_rpcs - 1]
+			for i in range(0, len(rpc_contents)):
+				op_id, op_name = rpc_contents[i].split(",")
+				self.rpc2name[int(op_id)] = str(op_name)
+
+			contents_ = contents[3 + num_registered_rpcs:]
+			for i in range(0, len(contents_)):
+				req_id, ts, rpc, ev, pool_size, total_pool_size, mid, order, counter, max_rss, ofi_events_read, bw, bw_start, bw_end, op_bw, op_start, op_end = contents_[i].split(",")
+				if(float(bw)):
+					self.host_bw_raw_data[str(hostname)].append((float(bw_start), float(bw_end), float(bw)))
+				if(float(op_bw)):
+					self.host_op_bw_raw_data[str(hostname)].append((float(op_start), float(op_end), float(op_bw)))
+				blocked_tasks = int(total_pool_size) - int(pool_size)
+				self.event_dict[req_id].append(Event(float(ts), int(pool_size), blocked_tasks, int(ev), mid, int(order), int(rpc), int(max_rss), int(pid), int(ofi_events_read), float(bw), float(bw_start), float(bw_end), float(op_bw), float(op_start), float(op_end)))
+			f1.close()
+
+	# Go through every request and sort the events inside the request
+	def sorteventsinrequest(self):
+		for req in self.event_dict.keys():
+			ev_list = self.event_dict[req]
+			ev_list.sort(key=lambda x: x.order)
+			if (len(ev_list) == 4):
+				self.request_list.append(Request(req, ev_list, ev_list[0].rpc, ev_list[len(ev_list)-1].ts - ev_list[0].ts, ev_list[1].pid))
+
+	# Generate individual Zipkin-compatible traces
+	def generatezipkintraces(self):
+		dir_ = str(os.getcwd()) + "/zipkin_traces/"
+		try:
+			os.mkdir(dir_)
+		except:
+			print ("Zipkin directory already exists")
+		for req in self.request_list:
+			filename = dir_ + str(req.req_id) + ".json"
+			fReq = open(filename, "w")
+			zipkin_string = "[\n"
+			debug = False
+			spanlist = req.generatespanlist(self.rpc2name, self.pidtohost, debug)
+			for i, span in enumerate(spanlist):
+				zipkin_string += "  {\n"
+				zipkin_string += "    \"traceId\": \"" + str(req.req_id).strip() + "\",\n"
+				zipkin_string += "    \"name\": \"" + str(span.name).strip() + "\",\n"
+				zipkin_string += "    \"id\": \"" + str(span.id) + "\",\n"
+				if(span.parent_span > -1):
+					zipkin_string += "    \"parentId\": \"" + str(span.parent_span) + "_" + str(req.req_id).strip() + "\",\n"
+					#zipkin_string += "    \"duration\": \"" + str(span.duration) + "\", \n"
+				zipkin_string += "    \"timestamp\": \"" + "{:.9f}".format(span.ts) + "\",\n"
+				zipkin_string += "    \"localEndpoint\": {\n      \"serviceName\": \"" + str(span.service_name).strip() + "\",\n      \"address\": \"" + str(span.address).strip("\n") + "\"},\n"
+				zipkin_string += "    \"annotations\": [{\n      \"timestamp\": \"" + "{:.9f}".format(span.start_ts) + "\", \"value\": \"" + str(span.start_type) + "\"},\n"
+				zipkin_string += "                      {\n      \"timestamp\": \"" + "{:.9f}".format(span.end_ts) + "\", \"value\": \"" + str(span.end_type) + "\"}]\n"
+				if( i < (len(spanlist)-1)):
+					zipkin_string += "  },\n"
+				else:
+					zipkin_string += "  }\n"
+			zipkin_string += "]\n"
+			fReq.write(zipkin_string)
+			fReq.flush()
+			fReq.close()
+			
+
+	# For every op, generate the times series data of ts, latency, ABT queue info, memory info, etc.
+	def generatereqmetadata(self):
+		request_time_series_data = defaultdict(list)
+		for req in self.request_list:
+			rss = list()
+			blocked_tasks = list()
+			abt_pool_size = list()
+			for ev in req.sorted_event_list:
+				rss.append((ev.max_rss, self.pidtohost[int(ev.pid)]))
+				blocked_tasks.append((ev.blocked_tasks, self.pidtohost[int(ev.pid)]))
+				abt_pool_size.append((ev.pool_size, self.pidtohost[int(ev.pid)]))
+			rss.sort(key = lambda x: x[0], reverse=True)
+			blocked_tasks.sort(key = lambda x: x[0], reverse=True)
+			abt_pool_size.sort(key = lambda x: x[0], reverse=True)
+			request_time_series_data[req.op].append((req.sorted_event_list[0].ts, (req.latency, self.pidtohost[int(req.pid)]), rss[0], abt_pool_size[0], blocked_tasks[0], (req.sorted_event_list[len(req.sorted_event_list)-1].ofi_events_read, self.pidtohost[int(req.pid)]), req.pid))
+
+		# For every op, sort requests based on timestamp
+		for op in request_time_series_data.keys():
+			request_time_series_data[op].sort(key = lambda x: x[0])
+			global global_start_time, global_end_time
+			if(request_time_series_data[op][0][0] < global_start_time):
+				global_start_time = request_time_series_data[op][0][0]
+			if(request_time_series_data[op][len(request_time_series_data[op]) - 1][0] > global_end_time):
+				global_end_time = request_time_series_data[op][len(request_time_series_data[op]) - 1][0]
+			self.request_op_metadata_list.append(RequestOpMetadata(op, request_time_series_data[op]))
+
+		for reqopmetadata in self.request_op_metadata_list:
+			reqopmetadata.calculatestats()
+			reqopmetadata.graphtimeseriesinfo(self.tt, self.rpc2name, self.pidtohost)
+
+	def printtotalreqlatency(self):
+		for req in self.request_list:
+			print (req.req_id, req.latency)
+
+	def generatetaillatency(self):
+		client_latency_arr = list()	
+		server_latency_arr = list()	
+		for req in self.request_list:
+			cliient_latency_arr.append(req.latency)
+			server_latency = (req.sorted_event_list[len(req.sorted_event_list) - 2].ts - req.sorted_event_list[1].ts)
+			if server_latency < 0:
+				server_latency = 0
+			server_latency_arr.append(server_latency)
+		client_latency_arr.sort(reverse=True)
+		server_latency_arr.sort(reverse=True)
+		fig, ax = plt.subplots(figsize=(6, 3))
+		fig.subplots_adjust(bottom=0.15, left=0.2)
+		ax.plot(client_latency_arr)
+		client_99 = np.percentile(client_latency_arr, 99)
+		client_median = np.median(client_latency_arr)
+		client_txt = 'Client 99 percentile: ' + str(client_99) + ', median: ' + str(client_median)
+		ax.text(0.5, 0.5, client_txt, horizontalalignment='center', verticalalignment='center', color='blue', fontsize=6, transform=ax.transAxes)
+		server_99 = np.percentile(server_latency_arr, 99)
+		server_median = np.median(server_latency_arr)
+		server_txt = 'Server 99 percentile: ' + str(server_99) + ', median: ' + str(server_median)
+		ax.text(0.5, 0.7, server_txt, horizontalalignment='center', verticalalignment='top', color='orange', fontsize=6, transform=ax.transAxes)
+		ax.plot(server_latency_arr)
+		ax.set_xticks([])
+		ax.set_xlabel('RPCs sorted by descending order of latency, blue=client, orange=server')
+		ax.set_ylabel('Latency (s)')
+		plt.title('Client and server latencies sorted in descending order')
+		plt.savefig(self.tt, format='pdf')
+		plt.close()
+
+	def generatehostbwdata(self):
+		n_buckets = int((global_end_time - global_start_time)/time_delta)
+		ts_buckets = []
+		for i in range(0, n_buckets):
+			ts_buckets.append(i*time_delta)
+		host_bw_data = defaultdict(list)
+		for host in self.host_bw_raw_data.keys():
+			host_bw_data[host] = np.zeros(n_buckets)
+			for req in self.host_bw_raw_data[host]:
+				bw_start = float(req[0])
+				bw_end = float(req[1])
+				bw = float(req[2])
+				bucket_start_index = int((bw_start - global_start_time)/time_delta)
+				bucket_end_index = int((bw_end - global_start_time)/time_delta)
+				for index in range(bucket_start_index, bucket_end_index):
+					host_bw_data[host][index] += bw
+		fig, ax = plt.subplots(figsize=(6, 3))
+		fig.subplots_adjust(bottom=0.15, left=0.2)
+		area = np.pi*3
+		for host in self.host_bw_raw_data.keys():
+			ax.scatter(ts_buckets, host_bw_data[host], s=area, c=np.random.rand(3,), alpha=0.6, edgecolors='none', label=str(host))
+		ax.set_xlabel('Time Bucket')
+		ax.set_ylabel('Network Bandwidth (MB/s)')
+		plt.title('Network Bandwidth over Time and Across Hosts')
+		plt.savefig(self.tt, format='pdf')
+		plt.close()
+	
+	def generateopbwdata(self):
+		n_buckets = int((global_end_time - global_start_time)/time_delta)
+		ts_buckets = []
+		for i in range(0, n_buckets):
+			ts_buckets.append(i*time_delta)
+		host_op_bw_data = defaultdict(list)
+		for host in self.host_op_bw_raw_data.keys():
+			host_op_bw_data[host] = np.zeros(n_buckets)
+			for req in self.host_op_bw_raw_data[host]:
+				op_start = float(req[0])
+				op_end = float(req[1])
+				op_bw = float(req[2])
+				bucket_start_index = int((op_start - global_start_time)/time_delta)
+				bucket_end_index = int((op_end - global_start_time)/time_delta)
+				for index in range(bucket_start_index, bucket_end_index):
+					host_op_bw_data[host][index] += op_bw
+		fig, ax = plt.subplots(figsize=(6, 3))
+		fig.subplots_adjust(bottom=0.15, left=0.2)
+		area = np.pi*3
+		for host in self.host_bw_raw_data.keys():
+			ax.scatter(ts_buckets, host_op_bw_data[host], s=area, c=np.random.rand(3,), alpha=0.6, edgecolors='none', label=str(host))
+		ax.set_xlabel('Time Bucket')
+		ax.set_ylabel('Storage Operation Bandwidth (MB/s)')
+		plt.title('Storage Operation Bandwidth over Time and Across Hosts')
+		plt.savefig(self.tt, format='pdf')
+		plt.close()
+
+	def generatetotaltimediff(self):
+		time = 0.0
+		server_time = 0.0
+		p = 0
+		n = 0
+		for req in self.request_list:
+			local_time = (req.sorted_event_list[len(req.sorted_event_list)-1].ts - req.sorted_event_list[len(req.sorted_event_list)-2].ts)
+			server_time += (req.sorted_event_list[len(req.sorted_event_list) - 2].ts - req.sorted_event_list[1].ts)
+			if local_time > 0.0:
+				time += local_time
+				p += 1
+			else:
+				n += 1
+		percent = (float(p)/float(len(self.request_list)))*100.0
+		print ("Time diff, server time, total requests, percent positive are: ", time, server_time, len(self.request_list), percent)
+		
+	def finalize(self):
+		self.tt.close()	
+
+def main():
+	print
+	print ("*******************MARGO Trace Generator******************")
+	print
+	print ("Reading .trace files from: " + os.getcwd())
+
+	t = TraceGenerator()
+	t.readfiles()
+	t.sorteventsinrequest()
+	#t.generatezipkintraces()
+	t.generatereqmetadata()
+	t.generatehostbwdata()
+	t.generateopbwdata()
+	#t.generatetaillatency()
+	#t.generatetotaltimediff()
+	t.finalize()
+
+main()

@@ -54,6 +54,21 @@ struct margo_breadcrumb_stats {
 
     /* count of occurrences of breadcrumb */
     unsigned long count;
+
+    /* SYMBIOSYS experimental fields */
+    /* additional stats */
+    double handler_time;
+    double completion_callback_time;
+    double internal_rdma_transfer_time;
+    double input_serial_time;
+    double input_deserial_time;
+    double output_serial_time;
+    size_t internal_rdma_transfer_size;
+    double bulk_transfer_time;
+    double bulk_create_elapsed;
+    double bulk_free_elapsed;
+    double operation_time;
+
 };
 
 typedef struct margo_breadcrumb_stats margo_breadcrumb_stats;
@@ -75,6 +90,68 @@ struct margo_breadcrumb {
 struct margo_breadcrumb_snapshot {
     struct margo_breadcrumb* ptr;
 };
+
+/* SYMBIOSYS tracing and sampling logic */
+/* Request tracing definitions */
+enum margo_trace_ev_type
+{
+  cs, sr, ss, cr
+};
+
+typedef enum margo_trace_ev_type margo_trace_ev_type;
+
+struct margo_trace_metadata
+{
+   size_t abt_pool_size;
+   size_t abt_pool_total_size;
+   uint64_t mid;
+   #ifdef linux
+   struct rusage usage;
+   #endif
+};
+
+struct margo_trace_record
+{
+  uint64_t trace_id;
+  double ts;
+  uint64_t rpc;
+  size_t ofi_events_read;
+  ev_type ev;
+  uint64_t order;
+  struct margo_trace_metadata metadata;
+  double bulk_transfer_bw;
+  double bulk_transfer_start;
+  double bulk_transfer_end;
+  double operation_start;
+  double operation_stop;
+  size_t operation_size;
+  double operation_bw;
+  char name[30];
+};
+
+struct margo_system_stat
+{
+  size_t abt_pool_size;
+  size_t abt_pool_total_size;
+  double system_cpu_util;
+  double system_memory_util;
+  double loadavg_1m;
+  double loadavg_5m;
+  double loadavg_15m;
+  double ts;
+};
+
+struct margo_request_metadata
+{
+  uint64_t rpc_breadcrumb;
+  uint64_t trace_id;
+  uint64_t order;
+  uint64_t current_rpc;
+};
+
+typedef struct margo_request_metadata margo_request_metadata;
+typedef struct margo_trace_record margo_trace_record;
+typedef struct margo_system_stat margo_system_stat;
 
     #ifdef __cplusplus
 }

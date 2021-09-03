@@ -1,0 +1,120 @@
+#!/usr/bin/env python
+# (C) 2015 The University of Chicago
+#
+# See COPYRIGHT in top-level directory.
+# 
+
+import matplotlib
+matplotlib.use("Agg")
+import base64
+import matplotlib.pyplot as plt; plt.rcdefaults()
+import numpy as np
+from matplotlib.backends.backend_pdf import PdfPages
+import operator
+import sys
+import os
+import glob, re
+import random
+from collections import defaultdict, OrderedDict
+
+class Stat:
+	def __init__(self, ts, val, host):
+		self.ts = ts
+		self.val = val
+		self.key = host
+
+class StatGenerator:
+	def __init__(self):
+		self.name = "MargoStatGenerator"
+		self.hostlist = set()
+		self.colors = dict()
+		self.hosttopid = defaultdict(list)
+		self.ABTPoolSizeObjs = list()
+		self.ABTTotalPoolSizeObjs = list()
+		self.MemUtilObjs = list()
+		self.CPUUtilObjs = list()
+		self.LoadAvg1mObjs = list()
+		self.LoadAvg5mObjs = list()
+		self.LoadAvg15mObjs = list()
+		self.tt = PdfPages('stats.pdf')
+
+	# Read all the trace files and gather a list of events for every unique request in the trace file
+	def readfiles(self):
+		files = glob.glob(str(os.getcwd())+"/*.stats") #Read all *.stats files in CURRENT_WORKING_DIRECTORY
+		for f in files:
+			f1 = open(f, "r")
+			contents = f1.readlines()
+			hostname = contents[0] #First line is always hostname
+			self.hostlist.add(str(hostname))
+			pid = contents[1] #Second line is always pid
+			self.hosttopid[str(hostname)].append(str(pid))
+			self.colors[hostname] = (random.uniform(0, 1), random.uniform(0, 1), random.uniform(0, 1))
+			stat_contents = contents[3:]
+			for i in range(0, len(stat_contents)):
+				ts, pool_size, total_pool_size, cpu_util, mem_util, loadavg_1m, loadavg_5m, loadavg_15m = stat_contents[i].split(",")
+				self.ABTPoolSizeObjs.append(Stat(float(ts), int(pool_size), str(hostname)))
+				self.ABTTotalPoolSizeObjs.append(Stat(float(ts), int(total_pool_size)-int(pool_size), str(hostname)))
+				self.MemUtilObjs.append(Stat(float(ts), float(mem_util), str(hostname)))
+				self.CPUUtilObjs.append(Stat(float(ts), float(cpu_util), str(hostname)))
+				self.LoadAvg1mObjs.append(Stat(float(ts), float(loadavg_1m), str(hostname)))
+				self.LoadAvg5mObjs.append(Stat(float(ts), float(loadavg_5m), str(hostname)))
+				self.LoadAvg15mObjs.append(Stat(float(ts), float(loadavg_15m), str(hostname)))
+			f1.close()
+
+	def gengraphs(self):
+		names = ['tasks_eligible_to_run', 'blocked_tasks', 'mem_utilization (%)', 'cpu_utilization (%)', 'loadavg_1m', 'loadavg_5m', 'loadavg_15m']
+		gen_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+		fig, ax = plt.subplots(len(names)+1, figsize=(20,20))
+		plt.subplots_adjust(hspace=0.4)
+		fig.suptitle('System stats', fontsize=20, fontweight='bold')
+		txt = "This profile presents a node-level view of various system statistics collected through periodic sampling on every node independent of requests. \ntasks_eligible_to_run (abt_pool_size) = Number of pending ULTs eligible to run\nblocked_tasks (abt_total_pool_size - abt_pool_size) = Number of ULTs that are blocked\nmem_util = Percentage of memory utilized on the node calculated as (1-(free_memory/total_memory))\ncpu_utilization = Percentage of CPU time spent in everything except idle state calculated as (1-(idle_time/total_time))\nloadavg_xm = Linux load average on the node for last X minutes\n"
+		ax[0].text(0, 0.5, txt, style='italic',
+			bbox={'facecolor': 'red', 'alpha': 0.5, 'pad': 10}, horizontalalignment='left')
+		ax[0].set_xticks([])
+		ax[0].set_yticks([])
+		for k1, v1 in ax[0].spines.items():
+			v1.set_visible(False)
+
+		for i, objs in enumerate([self.ABTPoolSizeObjs, self.ABTTotalPoolSizeObjs, self.MemUtilObjs, self.CPUUtilObjs, self.LoadAvg1mObjs, self.LoadAvg5mObjs, self.LoadAvg15mObjs]):
+			# Plot
+			host_ts = defaultdict(list)
+			host_val = defaultdict(list)
+			for obj in objs:
+				host_ts[obj.key].append(obj.ts-objs[0].ts)
+				host_val[obj.key].append(obj.val)
+
+			if(len(host_ts.keys()) < 9):
+				for num, host in enumerate(host_ts.keys()):
+					ts = host_ts[host]
+					val = host_val[host]
+					ax[i+1].scatter(ts, val, s=np.pi*3, c=gen_colors[num], label=host, alpha=0.6, edgecolors='none')
+					ax[i+1].legend(loc='upper left')
+					ax[i+1].set_xlim([0, max(ts)*1.05])
+			else:
+				for num, host in enumerate(host_ts.keys()):
+					ts = host_ts[host]
+					val = host_val[host]
+					ax[i+1].scatter(ts, val, s=np.pi*3, c=np.random.rand(3,), alpha=0.6, edgecolors='none')
+					ax[i+1].set_xlim([0, max(ts)*1.05])
+			ax[i+1].set_xlabel('timestamp (s)')
+			ax[i+1].set_ylabel(names[i])
+
+		#plt.legend(bbox_to_anchor=(0.90, 0.90), bbox_transform=plt.gcf().transFigure)
+		plt.savefig(self.tt, format='pdf')
+		plt.close()
+
+	def finalize(self):
+		self.tt.close()	
+
+def main():
+	print
+	print ("*******************MARGO Stats Generator******************")
+	print
+	print ("Reading .stats files from: " + os.getcwd())
+
+	t = StatGenerator()
+	t.readfiles()
+	t.gengraphs()
+	t.finalize()
+
+main()

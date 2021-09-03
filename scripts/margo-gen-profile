@@ -21,6 +21,16 @@ class ProfileGenerator:
 		self.name = "MargoProfileGenerator"
 
 		self.cumulative = [dict(), dict()] #Separate dictionaries for origin and target in the form <KEY = RPC breadcrumb name, VALUE = cumulative time>
+		self.handler_time = [dict(), dict()] #Separate dictionaries for origin and target in the form <KEY = RPC breadcrumb name, VALUE = handler time>
+		self.completion_callback_time = [dict(), dict()] #Separate dictionaries for origin and target in the form <KEY = RPC breadcrumb name, VALUE = completion callback time>
+		self.input_serial_deserial_time = [dict(), dict()] #Separate dictionaries for origin and target in the form <KEY = RPC breadcrumb name, VALUE = input_serial_deserial time>
+		self.output_serial_deserial_time = [dict(), dict()] #Separate dictionaries for origin and target in the form <KEY = RPC breadcrumb name, VALUE = output_serial_deserial time>
+		self.internal_rdma_transfer_time = [dict(), dict()] #Separate dictionaries for origin and target in the form <KEY = RPC breadcrumb name, VALUE = internal rdma transfer time>
+		self.bulk_transfer_time = [dict(), dict()] #Separate dictionaries for origin and target in the form <KEY = RPC breadcrumb name, VALUE = internal rdma transfer time>
+		self.bulk_create_time = [dict(), dict()] #Separate dictionaries for origin and target in the form <KEY = RPC breadcrumb name, VALUE = internal rdma transfer time>
+		self.bulk_free_time = [dict(), dict()] #Separate dictionaries for origin and target in the form <KEY = RPC breadcrumb name, VALUE = internal rdma transfer time>
+		self.operation_time = [dict(), dict()] #Separate dictionaries for origin and target in the form <KEY = RPC breadcrumb name, VALUE = internal rdma transfer time>
+		self.internal_rdma_transfer_size = [dict(), dict()] #Separate dictionaries for origin and target in the form <KEY = RPC breadcrumb name, VALUE = internal rdma transfer size>
 		self.count = dict() #Dictionary in the form <KEY = RPC breadcrumb name, VALUE = cumulative count>
 
 		self.cumulativestat = [defaultdict(list), defaultdict(list)]  #Separate dictionaries for origin and target in the form <KEY = RPC breadcrumb name, VALUE = [list of individual times] >
@@ -66,7 +76,7 @@ class ProfileGenerator:
 	# perf_arr = performance numbers to plot
 	# is_stat_graph = whether this graph is a statistics graph or not
 	# objects = list of stuff to plot on the x-axis
-	def __gengraph(self, x_pos, perf_arr, xlabel, ylabel, title, txt=None, is_stat_graph=False, use_x_ticks=False, objects=None, labels=[None, None]):
+	def __gengraph(self, x_pos, perf_arr, xlabel, ylabel, title, txt=None, is_stat_graph=False, use_x_ticks=False, objects=None, labels=[None, None], is_stacked=False):
 		fig = plt.figure(num=None, figsize=(15, 10), dpi=80, facecolor='w', edgecolor='k')
 		ax = fig.add_subplot(111)
 		width=0.35
@@ -76,7 +86,39 @@ class ProfileGenerator:
 			ax.set_ylim(bottom=0)
 		else:
 			for i in range(0, len(perf_arr)):
-				ax.bar(x_pos+i*width, perf_arr[i], width=width, align='center', alpha=0.5, label=labels[i])
+				if not is_stacked:
+					ax.bar(x_pos+i*width, perf_arr[i], width=width, align='center', alpha=0.5, label=labels[i])
+				else:
+					ax.set_ylim(bottom=0, top=perf_arr[0][0][0]*1.1)
+					if i == 0:
+						bottombar = [j[0] for j in perf_arr[i]]
+						middlebar = [j[2] for j in perf_arr[i]]
+						topbar = [j[3] for j in perf_arr[i]]
+						ax.bar(x_pos+i*width, bottombar, width=width, align='center', alpha=0.5, label=labels[i][0])
+						ax.bar(x_pos+i*width, middlebar, width=width, align='center', alpha=0.5, bottom=bottombar, label=labels[i][1])
+						ax.bar(x_pos+i*width, topbar, width=width, align='center', alpha=0.5, bottom=[middlebar[j] + bottombar[j] for j, e in enumerate(middlebar)], label=labels[i][2])
+					else:
+						bottombar = [j[0] for j in perf_arr[i]]
+						secondbar = [j[1] for j in perf_arr[i]]
+						thirdbar = [j[2] for j in perf_arr[i]]
+						fourthbar = [j[3] for j in perf_arr[i]]
+						fifthbar = [j[4] for j in perf_arr[i]]
+						sixthbar = [j[5] for j in perf_arr[i]]
+						seventhbar = [j[6] for j in perf_arr[i]]
+						eigthbar = [j[7] for j in perf_arr[i]]
+						ninthbar = [j[8] for j in perf_arr[i]]
+						topbar = [j[9] for j in perf_arr[i]]
+						ax.bar(x_pos+i*width, bottombar, width=width, align='center', alpha=0.5, label=labels[i][0])
+						ax.bar(x_pos+i*width, secondbar, width=width, align='center', alpha=0.5, label=labels[i][1], bottom=bottombar)
+						ax.bar(x_pos+i*width, thirdbar, width=width, align='center', alpha=0.5, label=labels[i][2], bottom=[secondbar[j]+bottombar[j] for j, e in enumerate(secondbar)])
+						ax.bar(x_pos+i*width, fourthbar, width=width, align='center', alpha=0.5, label=labels[i][3], bottom=[thirdbar[j]+secondbar[j]+bottombar[j] for j, e in enumerate(thirdbar)])
+						ax.bar(x_pos+i*width, fifthbar, width=width, align='center', alpha=0.5, label=labels[i][4], bottom=[fourthbar[j]+thirdbar[j]+secondbar[j]+bottombar[j] for j, e in enumerate(fourthbar)])
+						ax.bar(x_pos+i*width, sixthbar, width=width, align='center', alpha=0.5, label=labels[i][5], bottom=[fifthbar[j]+fourthbar[j]+thirdbar[j]+secondbar[j]+bottombar[j] for j, e in enumerate(fifthbar)])
+						ax.bar(x_pos+i*width, seventhbar, width=width, align='center', alpha=0.5, label=labels[i][6], bottom=[sixthbar[j]+fifthbar[j]+fourthbar[j]+thirdbar[j]+secondbar[j]+bottombar[j] for j, e in enumerate(sixthbar)])
+						ax.bar(x_pos+i*width, eigthbar, width=width, align='center', alpha=0.5, label=labels[i][7], bottom=[seventhbar[j]+sixthbar[j]+fifthbar[j]+fourthbar[j]+thirdbar[j]+secondbar[j]+bottombar[j] for j, e in enumerate(seventhbar)])
+						ax.bar(x_pos+i*width, ninthbar, width=width, align='center', alpha=0.5, label=labels[i][8], bottom=[eigthbar[j]+seventhbar[j]+sixthbar[j]+fifthbar[j]+fourthbar[j]+thirdbar[j]+secondbar[j]+bottombar[j] for j, e in enumerate(eigthbar)])
+						ax.bar(x_pos+i*width, topbar, width=width, align='center', alpha=0.5, label=labels[i][9], bottom=[ninthbar[j]+eigthbar[j]+seventhbar[j]+sixthbar[j]+fifthbar[j]+fourthbar[j]+thirdbar[j]+secondbar[j]+bottombar[j] for j, e in enumerate(ninthbar)])
+
 				ax.legend(loc='best')
 			
 		if(use_x_ticks):
@@ -114,13 +156,13 @@ class ProfileGenerator:
 			v = perf_arr[i]
 			ax[i+1].plot(v)
 
-			for k1, v1 in ax[i+1].spines.items():
-				v1.set_visible(False)
+			#for k1, v1 in ax[i+1].spines.items():
+			#	v1.set_visible(False)
 
 			ax[i+1].set_xticks([])
-			ax[i+1].set_yticks([])
-			ax[i+1].plot(len(v) - 1, v[len(v) - 1], 'r.')
-			ax[i+1].fill_between(range(len(v)), v, len(v)*[min(v)], alpha=0.1)
+			#ax[i+1].set_yticks([])
+			#ax[i+1].plot(len(v) - 1, v[len(v) - 1], 'r.')
+			#ax[i+1].fill_between(range(len(v)), v, len(v)*[min(v)], alpha=0.1)
 			ax[i+1].set_title((objects[i]).strip('\n'), fontsize=8)
 
 		plt.savefig(self.pp, format='pdf')
@@ -152,7 +194,7 @@ class ProfileGenerator:
 			node_string += ("subgraph cluster" + node + " {\n")
 			node_string += ("node [style=filled, color=white];\n style=filled;\n color=lightgrey;\n")
 			for mid in midlist:
-				node_string += ("subgraph cluster" + mid.replace("+", "_").replace(":", "_").replace(".","_").replace("//", "_").replace("/", "_") + " {\n")
+				node_string += ("subgraph cluster" + mid.replace("+", "_").replace(":", "_").replace(".","_").replace("//", "_").replace("/", "_").replace(";","_") + " {\n")
 				node_string += ("node [style=filled];\n color=lightblue;\n")
 				for (provider_type, provider_id) in self.midtoprovider[mid]:
 					node_string += (str(provider_id) + ";\n")
@@ -197,7 +239,6 @@ class ProfileGenerator:
 				edge_string += (str(source_provider_id) + " -> " + str(dest_provider_id) + "[label=\""+dest_call+","+str(count)+","+str(cumulative_time)+"\", weight=\""+str(dest_call)+","+str(count)+","+str(cumulative_time)+"\"];\n")
 
 		return edge_string			
-
 
 	# Remove profile information for one-sided RPCs that are characterized by having an origin entry but no corresponding target entry
 	def __filteroutonesidedrpcs(self):
@@ -246,9 +287,10 @@ class ProfileGenerator:
 				#Even lines contain breadcrumb data
 				name, avg, rpc_breadcrumb, \
 					addr_hash, origin_or_target, \
-						cumulative, _min, _max, count, \
+						cumulative, handler_time, completion_callback_time, input_serial_time, input_deserial_time, output_serial_time, internal_rdma_transfer_time, internal_rdma_transfer_size,_min, _max, count, \
 							abt_pool_size_hwm, abt_pool_size_lwm, abt_pool_size_cumulative,  \
-								abt_pool_total_size_hwm, abt_pool_total_size_lwm, abt_pool_total_size_cumulative = breadcrumb_line.split(',', 15)
+								abt_pool_total_size_hwm, abt_pool_total_size_lwm, abt_pool_total_size_cumulative, \
+								bulk_transfer_time, bulk_create_time, bulk_free_time, operation_time = breadcrumb_line.split(',', 26)
 
 				self.rpclist.append(str(name))
 				origin_or_target = int(origin_or_target)
@@ -256,6 +298,31 @@ class ProfileGenerator:
 
 				self.count[name] = self.count.get(name, 0) + int(count)
 				self.cumulative[origin_or_target][name] = self.cumulative[origin_or_target].get(name, 0.0) + float(cumulative)
+				self.handler_time[origin_or_target][name] = self.handler_time[origin_or_target].get(name, 0.0) + float(handler_time)
+				self.completion_callback_time[origin_or_target][name] = self.completion_callback_time[origin_or_target].get(name, 0.0) + float(completion_callback_time)
+				if (origin_or_target == 0):
+					self.input_serial_deserial_time[origin_or_target][name] = self.input_serial_deserial_time[origin_or_target].get(name, 0.0) + float(input_serial_time)
+					self.cumulative[origin_or_target][name] = self.cumulative[origin_or_target][name] -  self.input_serial_deserial_time[origin_or_target][name] - self.completion_callback_time[origin_or_target][name] #Adjust the timings to prevent double-counting
+					self.output_serial_deserial_time[origin_or_target][name] = 0.0
+		
+					self.internal_rdma_transfer_time[origin_or_target][name] = 0.0
+					self.internal_rdma_transfer_size[origin_or_target][name] = 0.0
+					self.bulk_transfer_time[origin_or_target][name] = 0.0
+					self.bulk_create_time[origin_or_target][name] = 0.0
+					self.bulk_free_time[origin_or_target][name] = 0.0
+					self.operation_time[origin_or_target][name] = 0.0
+				else:
+					self.input_serial_deserial_time[origin_or_target][name] = self.input_serial_deserial_time[origin_or_target].get(name, 0.0) + float(input_deserial_time)
+					self.output_serial_deserial_time[origin_or_target][name] = self.output_serial_deserial_time[origin_or_target].get(name, 0.0) + float(output_serial_time)
+		
+					self.bulk_transfer_time[origin_or_target][name] = self.bulk_transfer_time[origin_or_target].get(name, 0.0) + float(bulk_transfer_time)
+					self.bulk_create_time[origin_or_target][name] = self.bulk_create_time[origin_or_target].get(name, 0.0) + float(bulk_create_time)
+					self.bulk_free_time[origin_or_target][name] = self.bulk_free_time[origin_or_target].get(name, 0.0) + float(bulk_free_time)
+					self.operation_time[origin_or_target][name] = self.operation_time[origin_or_target].get(name, 0.0) + float(operation_time)
+					self.internal_rdma_transfer_time[origin_or_target][name] = self.internal_rdma_transfer_time[origin_or_target].get(name, 0.0) + float(internal_rdma_transfer_time)
+					self.internal_rdma_transfer_size[origin_or_target][name] = self.internal_rdma_transfer_size[origin_or_target].get(name, 0.0) + int(internal_rdma_transfer_size)
+					self.cumulative[origin_or_target][name] = self.cumulative[origin_or_target][name] - float(input_deserial_time) -float(output_serial_time) - float(bulk_transfer_time) - float(bulk_create_time) - float(bulk_free_time) - float(operation_time) - float(internal_rdma_transfer_time)#Adjust the timings to prevent double-counting
+
 				self.countstat[origin_or_target][name].append(int(count))
 				self.cumulativestat[origin_or_target][name].append(float(cumulative))
 
@@ -277,12 +344,11 @@ class ProfileGenerator:
 				for v in value_list[1:]:
 					if v != "\n":
 						t, c, i = v.split(',')
-						if(origin_or_target):
+						if(not origin_or_target):
 							self.countsparklines[(name, int(i))].append(float(c))
 						self.timesparklines[origin_or_target][(name, int(i))].append(float(t))
 			
 			f1.close()
-
 		# Filter out one sided RPCs. For now, we are handling this in post-processing and issuing a warning to the user
 		# when we detect that the profiles contain one-sided RPCs
 		self.__filteroutonesidedrpcs()
@@ -344,7 +410,7 @@ class ProfileGenerator:
 	# 0 = origin, 1 = target
 	def gencumulativegraph(self):
 		graph_name = 'Cumulative Time'
-		labels = ['Origin', 'Target']
+		labels = [['Origin (Exclusive)', 'Origin Callback Completion Time', 'Origin Input Serialization Time'], ['Target ULT Execution Time (Exclusive)', 'Target ULT Handler Time', 'Target Callback Completion Time', 'Target Input Deserialization Time', 'Target Output Serialization Time', 'Target Internal RDMA Transfer Time', 'Target Bulk Transfer Time', 'Target Bulk Create Time', 'Target Bulk Free Time', 'Target Operation Time']]
 		perf_arr = []
 		txt = 'Sort breadcrumbs by cumulative time on the origin \n Display top-5 breadcrumbs in descending order of cumulative time on origin and target'
 
@@ -356,12 +422,11 @@ class ProfileGenerator:
 		for i in 0,1:
 			perf = []
 			for k in keys:
-				perf.append(self.cumulative[i][k])
-
+				perf.append((self.cumulative[i][k], self.handler_time[i][k], self.completion_callback_time[i][k], self.input_serial_deserial_time[i][k], self.output_serial_deserial_time[i][k], self.internal_rdma_transfer_time[i][k], self.bulk_transfer_time[i][k], self.bulk_create_time[i][k], self.bulk_free_time[i][k], self.operation_time[i][k]))
 			perf_arr.append(perf)
 
 		self.__gengraph(x_pos, perf_arr, 'Breadcrumb ID', 'Seconds',
-		graph_name, txt=txt, is_stat_graph=False, use_x_ticks=True, objects=objects, labels=labels)
+		graph_name, txt=txt, is_stat_graph=False, use_x_ticks=True, objects=objects, labels=labels, is_stacked=True)
 
 	#Display statistics on origin and target for the top 5 RPC breadcrumbs determined by cumulative time
 	# 0 = origin, 1 = target
@@ -527,7 +592,7 @@ For the top-5 breadcrumbs, display sparklines for the cumulative call-time acros
 
 		f.write("}\n")
 		f.close()
-
+			
 	# Generate and display warnings about missing profile data, etc
 	def genwarnings(self):
 		if (len(self.onesidedrpclist) != 0):
@@ -552,7 +617,7 @@ RPCs were detected in the profile files: \n\n" + txt
 
 			plt.savefig(self.pp, format='pdf')
 			plt.close()
-			
+
 	def finalize(self):
 		self.pp.close()
 	
