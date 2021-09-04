@@ -34,4 +34,9 @@ extern ABTX_prof_context g_margo_abt_prof_context;
 extern ABT_key g_margo_rpc_breadcrumb_key;
 extern ABT_key g_margo_target_timing_key;
 
+/* SYMBIOSYS begin */
+extern ABT_key g_margo_trace_id_key;
+extern ABT_key g_margo_request_order_key;
+/* SYMBIOSYS end */
+
 #endif

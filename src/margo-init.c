@@ -22,6 +22,7 @@
 #define MARGO_DEFAULT_ABT_MEM_MAX_NUM_STACKS 8
 #define MARGO_DEFAULT_ABT_THREAD_STACKSIZE   2097152
 #define MARGO_SYSTEM_STAT_SIZE 10000
+#define MARGO_TRACE_RECORD_SIZE 500000
 
 // Validates the format of the configuration and
 // fill default values if they are note provided
@@ -377,6 +378,14 @@ margo_instance_id margo_init_ext(const char*                   address,
     ret = ABT_key_create(free, &g_margo_target_timing_key);
     if (ret != ABT_SUCCESS) goto error;
 
+    /* SYMBIOSYS begin */
+    ret = ABT_key_create(free, &g_trace_id_key);
+    if (ret != ABT_SUCCESS) goto error;
+  
+    ret = ABT_key_create(free, &g_request_order_key);
+    if (ret != ABT_SUCCESS) goto error;
+    /* SYMBIOSYS end */
+
     mid->sparkline_data_collection_tid = ABT_THREAD_NULL;
     mid->diag_enabled                  = diag_enabled;
     mid->profile_enabled               = profile_enabled;
@@ -396,6 +405,10 @@ margo_instance_id margo_init_ext(const char*                   address,
         mid->system_stats_index = 0;	
 	__margo_system_stats_thread_start(mid);
         mid->system_stats = (margo_system_stat *)calloc(MARGO_SYSTEM_STAT_SIZE, sizeof(margo_system_stat));
+        mid->trace_records = (margo_trace_record *)calloc(MARGO_TRACE_RECORD_SIZE, sizeof(margo_trace_record));
+        mid->trace_record_index = 0;
+        mid->trace_id_counter = 0;
+        mid->trace_collection_start_time = ABT_get_wtime();
 	/* SYMBIOSYS END */
     }
 

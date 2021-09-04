@@ -19,6 +19,157 @@ static void  margo_diag_dump_fp(margo_instance_id mid, FILE* outfile);
 static void  margo_diag_dump_abt_fp(margo_instance_id mid, FILE* outfile);
 static void  margo_profile_dump_fp(margo_instance_id mid, FILE* outfile);
 
+/* SYMBIOSYS begin */
+
+void __margo_internal_breadcrumb_handler_set(uint64_t rpc_breadcrumb)
+{
+    uint64_t* val;
+
+    ABT_key_get(g_margo_rpc_breadcrumb_key, (void**)(&val));
+
+    if (val == NULL) {
+        /* key not set yet on this ULT; we need to allocate a new one */
+        /* best effort; just return and don't set it if we can't allocate memory
+         */
+        val = malloc(sizeof(*val));
+        if (!val) return;
+    }
+    *val = rpc_breadcrumb;
+
+    ABT_key_set(g_margo_rpc_breadcrumb_key, val);
+
+    return;
+}
+
+void __margo_internal_start_server_time(margo_instance_id mid, hg_handle_t handle, double ts)
+{
+    hg_return_t ret;
+    margo_request_metadata * metadata;
+    const struct hg_info* info;
+    char * name;
+    struct margo_request_struct* req;
+
+    ret = HG_Get_input_buf(handle, (void**)&metadata, NULL);
+    assert(ret == HG_SUCCESS);
+    (*metadata).rpc_breadcrumb = le64toh((*metadata).rpc_breadcrumb);
+  
+    /* add the incoming breadcrumb info to a ULT-local key if profiling is enabled */
+    if(mid->profile_enabled) {
+
+        ABT_key_get(g_margo_target_timing_key, (void**)(&req));
+
+        if(req == NULL)
+        {
+            req = calloc(1, sizeof(*req));
+        }
+    
+        req->rpc_breadcrumb = (*metadata).rpc_breadcrumb;
+
+        req->timer = NULL;
+        req->handle = handle;
+        req->current_rpc = (*metadata).current_rpc;
+        req->trace_id = (*metadata).trace_id;
+        req->start_time = ABT_get_wtime();
+        req->handler_time = (req->start_time - ts);
+        req->is_server = 0;
+        info = HG_Get_info(handle);
+        req->provider_id = 0;
+        req->provider_id += ((info->id) & (((1<<(__MARGO_PROVIDER_ID_SIZE*8))-1)));
+        req->server_addr_hash = mid->self_addr_hash;
+ 
+        /* Note: we use this opportunity to retrieve the incoming RPC
+         * breadcrumb and put it in a thread-local argobots key.  It is
+         * shifted down 16 bits so that if this handler in turn issues more
+         * RPCs, there will be a stack showing the ancestry of RPC calls that
+         * led to that point.
+         */
+        ABT_key_set(g_margo_target_timing_key, req);
+        __margo_internal_generate_trace_event(mid, (*metadata).trace_id, sr, (*metadata).current_rpc, (*metadata).order + 1, 0, 0, 0, 0, 0, 0);
+        __margo_internal_request_order_set((*metadata).order + 1);
+        __margo_internal_breadcrumb_handler_set((*metadata).rpc_breadcrumb << 16);
+        __margo_internal_trace_id_set((*metadata).trace_id);
+    }
+}
+__uint128_t __margo_internal_generate_trace_id(margo_instance_id mid)
+{
+    char * name;
+    uint64_t trace_id;
+    uint64_t hash;
+
+    GET_SELF_ADDR_STR(mid, name);
+    HASH_JEN(name, strlen(name), hash); /*record own address in the breadcrumb */
+    trace_id = hash;
+    trace_id = ((trace_id) << 32);
+    trace_id |= mid->trace_id_counter;
+    mid->trace_id_counter++;
+    return trace_id;
+}
+
+void __margo_internal_generate_trace_event(margo_instance_id mid, uint64_t trace_id, ev_type ev, uint64_t rpc, uint64_t order, double bw, double bw_start, double bw_end)
+{
+
+   mid->trace_records[mid->trace_record_index].trace_id = trace_id;
+   mid->trace_records[mid->trace_record_index].ts = ABT_get_wtime();
+   mid->trace_records[mid->trace_record_index].rpc = rpc;
+   mid->trace_records[mid->trace_record_index].ev = ev;
+   #ifdef MERCURY_PROFILING
+   margo_read_pvar_data(mid, NULL, 3, (void*)&mid->trace_records[mid->trace_record_index].ofi_events_read);
+   #endif
+   mid->trace_records[mid->trace_record_index].bulk_transfer_bw = bw;
+   mid->trace_records[mid->trace_record_index].bulk_transfer_start = bw_start;
+   mid->trace_records[mid->trace_record_index].bulk_transfer_end = bw_end;
+   ABT_pool_get_total_size(mid->handler_pool, &(mid->trace_records[mid->trace_record_index].metadata.abt_pool_total_size));
+   ABT_pool_get_size(mid->handler_pool, &(mid->trace_records[mid->trace_record_index].metadata.abt_pool_size));
+   mid->trace_records[mid->trace_record_index].metadata.mid = mid->self_addr_hash;
+   mid->trace_records[mid->trace_record_index].order = order;
+   mid->trace_record_index++;
+
+   #ifdef linux
+   getrusage(RUSAGE_SELF, &mid->trace_records[mid->trace_record_index].metadata.usage);
+   #endif
+}
+void __margo_internal_trace_id_set(uint64_t trace_id)
+{
+    uint64_t *val;
+
+    ABT_key_get(trace_id_key, (void**)(&val));
+
+    if(val == NULL)
+    {
+        /* key not set yet on this ULT; we need to allocate a new one */
+        /* best effort; just return and don't set it if we can't allocate memory */
+        val = malloc(sizeof(*val));
+        if(!val)
+            return;
+    }
+    *val = trace_id;
+
+    ABT_key_set(trace_id_key, val);
+
+    return;
+}
+
+void __margo_internal_request_order_set(uint64_t order)
+{
+    uint64_t *val;
+
+    ABT_key_get(request_order_key, (void**)(&val));
+
+    if(val == NULL)
+    {
+        /* key not set yet on this ULT; we need to allocate a new one */
+        /* best effort; just return and don't set it if we can't allocate memory */
+        val = malloc(sizeof(*val));
+        if(!val)
+            return;
+    }
+    *val = order;
+
+    ABT_key_set(request_order_key, val);
+
+    return;
+}
+
 static double calculate_percent_cpu_util()
 {
     char str[100], dummy[10];

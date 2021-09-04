@@ -67,8 +67,6 @@ struct margo_breadcrumb_stats {
     double bulk_transfer_time;
     double bulk_create_elapsed;
     double bulk_free_elapsed;
-    double operation_time;
-
 };
 
 typedef struct margo_breadcrumb_stats margo_breadcrumb_stats;

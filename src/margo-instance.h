@@ -160,6 +160,10 @@ struct margo_instance {
     ABT_thread        system_data_collection_tid;
     uint16_t          system_stats_index;
     margo_system_stat * system_stats;
+    margo_trace_record * trace_records;
+    unsigned int trace_record_index;
+    unsigned int trace_id_counter;
+    double trace_collection_start_time;
     /* SYMBIOSYS END */
 };
 
@@ -173,6 +177,20 @@ struct margo_request_struct {
                                   server instance */
     uint16_t provider_id; /* id of the provider servicing the request, local to
                              the margo server instance */
+
+    /* SYMBIOSYS begin */
+    uint64_t current_rpc;
+    uint64_t trace_id;
+    uint64_t is_server;
+    double handler_time;
+    double ult_time;
+    double bulk_create_elapsed;
+    double bulk_free_elapsed;
+    double bulk_transfer_bw;
+    double bulk_transfer_start;
+    double bulk_transfer_end;
+    ABT_timer abt_timer;
+    /* SYMBIOSYS end */
 };
 
 struct margo_rpc_data {

@@ -294,8 +294,11 @@ void margo_finalize(margo_instance_id mid)
 	/* SYMBIOSYS BEGIN */
         __margo_system_stats_thread_stop(mid);
         margo_system_stats_dump(mid, "profile", 1);
+        margo_trace_dump(mid, "profile", 1);
 	free(mid->system_stats);
 	mid->system_stats = NULL;
+	free(mid->trace_records);
+	mid->trace_records = NULL;
 	/* SYMBIOSYS END */
     }
 
@@ -798,7 +801,7 @@ static hg_return_t margo_cb(const struct hg_cb_info* info)
     }
     if (req->timer) { free(req->timer); }
 
-    if (req->rpc_breadcrumb != 0) {
+    if (req->rpc_breadcrumb != 0 && req->is_server == 0) {
         /* This is the callback from an HG_Forward call.  Track RPC timing
          * information.
          */
@@ -809,6 +812,12 @@ static hg_return_t margo_cb(const struct hg_cb_info* info)
             __margo_breadcrumb_measure(mid, req->rpc_breadcrumb,
                                        req->start_time, 0, req->provider_id,
                                        req->server_addr_hash, req->handle);
+	    /* SYMBIOSYS start */
+            uint64_t * current_order;
+            int ret = HG_Get_output_buf(req->handle, (void**)&current_order, NULL);
+            assert(ret == HG_SUCCESS);
+            __margo_internal_generate_trace_event(mid, req->trace_id, cr, req->current_rpc, (*current_order) + 1, 0, 0, 0);
+	    /* SYMBIOSYS end */
         }
     }
 
@@ -853,9 +862,14 @@ static hg_return_t margo_provider_iforward_internal(
     hg_proc_cb_t          in_cb, out_cb;
     hg_bool_t             flag;
     margo_instance_id     mid = margo_hg_handle_get_instance(handle);
-    uint64_t*             rpc_breadcrumb;
     char                  addr_string[128];
     hg_size_t             addr_string_sz = 128;
+
+    /* SYMBIOSYS start */
+    margo_request_metadata * rpc_breadcrumb;
+    uint64_t * order;
+    __uint128_t * trace_id;
+    /* SYMBIOSYS end */
 
     hgi = HG_Get_info(handle);
     id  = mux_id(hgi->id, provider_id);
@@ -915,12 +929,13 @@ static hg_return_t margo_provider_iforward_internal(
      */
 
     req->rpc_breadcrumb = 0;
+    req->is_server = 0;
     if (mid->profile_enabled) {
         ret = HG_Get_input_buf(handle, (void**)&rpc_breadcrumb, NULL);
         if (ret != HG_SUCCESS) return (ret);
         req->rpc_breadcrumb = __margo_breadcrumb_set(hgi->id);
         /* LE encoding */
-        *rpc_breadcrumb = htole64(req->rpc_breadcrumb);
+        req->rpc_breadcrumb = = htole64(req->rpc_breadcrumb);
 
         req->start_time = ABT_get_wtime();
 
@@ -933,6 +948,29 @@ static hg_return_t margo_provider_iforward_internal(
         HASH_JEN(
             addr_string, strlen(addr_string),
             req->server_addr_hash); /*record server address in the breadcrumb */
+
+	/* SYMBIOSYS begin */
+        (*rpc_breadcrumb).rpc_breadcrumb = req->rpc_breadcrumb;
+        (*rpc_breadcrumb).current_rpc = (hgi->id) >> (__MARGO_PROVIDER_ID_SIZE*8);
+        (*rpc_breadcrumb).current_rpc &= 0xffff;
+        req->current_rpc = (*rpc_breadcrumb).current_rpc;
+
+        ABT_key_get(g_trace_id_key, (void**)(&trace_id));
+
+        if(trace_id == NULL) {
+          (*rpc_breadcrumb).trace_id = __margo_internal_generate_trace_id(mid);
+          (*rpc_breadcrumb).order = 0;
+        } else {
+          (*rpc_breadcrumb).trace_id = (*trace_id);
+          ABT_key_get(request_order_key, (void**)&order);
+          (*rpc_breadcrumb).order = (*order) + 1;
+          margo_internal_request_order_set((*order) + 4);
+        }
+
+        req->trace_id = (*metadata).trace_id;
+        req->start_time = ABT_get_wtime();
+
+        __margo_internal_generate_trace_event(mid, (*metadata).trace_id, cs, (*metadata).current_rpc, (*metadata).order, 0, 0, 0);
     }
 
     hret = HG_Forward(handle, margo_cb, (void*)req, in_struct);
@@ -1053,6 +1091,39 @@ margo_irespond_internal(hg_handle_t   handle,
     req->start_time     = ABT_get_wtime();
     req->rpc_breadcrumb = 0;
 
+    /* SYMBIOSYS begin */
+    req->is_server = 1;
+    margo_request_metadata * metadata;
+    const struct hg_info* info;
+    char * name;
+
+    margo_instance_id mid = margo_hg_handle_get_instance(handle);
+    ret = HG_Get_input_buf(handle, (void**)&metadata, NULL);
+    assert(ret == HG_SUCCESS);
+    (*metadata).rpc_breadcrumb = le64toh((*metadata).rpc_breadcrumb);
+  
+    /* add the incoming breadcrumb info to a ULT-local key if profiling is enabled */
+    if(mid->profile_enabled) {
+
+        req->current_rpc = (*metadata).current_rpc;
+        req->trace_id = (*metadata).trace_id;
+        req->is_server = 1;
+        info = HG_Get_info(handle);
+        req->provider_id = 0;
+        req->provider_id += ((info->id) & (((1<<(__MARGO_PROVIDER_ID_SIZE*8))-1)));
+        req->server_addr_hash = mid->self_addr_hash;
+        req->rpc_breadcrumb = (*metadata).rpc_breadcrumb;
+ 
+        /* Note: we use this opportunity to retrieve the incoming RPC
+         * breadcrumb and put it in a thread-local argobots key.  It is
+         * shifted down 16 bits so that if this handler in turn issues more
+         * RPCs, there will be a stack showing the ancestry of RPC calls that
+         * led to that point.
+         */
+        __margo_internal_breadcrumb_handler_set((*metadata).rpc_breadcrumb << 16);
+    }
+    /* SYMBIOSYS end */
+
     return HG_Respond(handle, margo_cb, (void*)req, out_struct);
 }
 
@@ -1073,8 +1144,35 @@ hg_return_t margo_respond(hg_handle_t handle, void* out_struct)
                                    handle);
     }
 
-    hg_return_t                 hret;
+    /* SYMBIOSYS begin */
+    uint64_t * order;
+    uint64_t * temp;
+    double handler_time = 0, ult_time = 0;
+    if(mid->profile_enabled) {
+      ABT_key_get(g_request_order_key, (void**)(&order));
+      handler_time = treq->handler_time;
+      ult_time = ABT_get_wtime() - treq->start_time;
+
+      int ret = HG_Get_output_buf(handle, (void**)&temp, NULL);
+      assert(ret == HG_SUCCESS);
+
+      (*temp) = (*order) + 1;
+      __margo_internal_generate_trace_event(mid, treq->trace_id, ss, treq->current_rpc, (*order) + 1, treq->bulk_transfer_bw, treq->bulk_transfer_start, treq->bulk_transfer_end);
+    }
+
+    hg_return_t hret;
     struct margo_request_struct reqs;
+
+    if(mid->profile_enabled) {
+      reqs.handler_time = handler_time;
+      reqs.ult_time = ult_time;
+      reqs.bulk_create_elapsed = treq->bulk_create_elapsed;
+      reqs.bulk_free_elapsed = treq->bulk_free_elapsed;
+      reqs.bulk_transfer_start = treq->bulk_transfer_start;
+      reqs.bulk_transfer_end = treq->bulk_transfer_end;
+    }
+    /* SYMBIOSYS end */
+
     hret = margo_irespond_internal(handle, out_struct, &reqs);
     if (hret != HG_SUCCESS) return hret;
     return margo_wait_internal(&reqs);
@@ -1114,10 +1212,31 @@ hg_return_t margo_bulk_create(margo_instance_id mid,
         __DIAG_UPDATE(mid->diag_bulk_create_elapsed, (tm2 - tm1));
     }
 
+    /* SYMBIOSYS begin */
+    struct margo_request_struct* treq;
+    ABT_key_get(g_margo_target_timing_key, (void**)(&treq));
+    if (treq != NULL) { 
+      treq->bulk_create_elapsed = tm2-tm1;
+    }
+    /* SYMBIOSYS end */
+
     return (hret);
 }
 
-hg_return_t margo_bulk_free(hg_bulk_t handle) { return (HG_Bulk_free(handle)); }
+hg_return_t margo_bulk_free(hg_bulk_t handle) { 
+
+    /* SYMBIOSYS begin */	
+    double start = ABT_get_wtime();
+    hg_return_t ret = HG_Bulk_free(handle);
+    double end = ABT_get_wtime() - start;
+    struct margo_request_struct* treq;
+    ABT_key_get(g_margo_target_timing_key, (void**)(&treq));
+    if (treq != NULL) { 
+      treq->bulk_free_elapsed = end;
+    }
+    /* SYMBIOSYS end */
+    return ret; 
+}
 
 hg_return_t margo_bulk_deserialize(margo_instance_id mid,
                                    hg_bulk_t*        handle,
@@ -1148,9 +1267,23 @@ static hg_return_t margo_bulk_itransfer_internal(
     req->start_time     = ABT_get_wtime();
     req->rpc_breadcrumb = 0;
 
+    /* SYMBIOSYS start */
+    req->is_server = 0;
+    double start = ABT_get_wtime();  
     hret = HG_Bulk_transfer(mid->hg_context, margo_cb, (void*)req, op,
                             origin_addr, origin_handle, origin_offset,
                             local_handle, local_offset, size, HG_OP_ID_IGNORE);
+    double end = ABT_get_wtime() - start;
+    double bw;
+    bw = ((double)size/end)/1000000;
+    struct margo_request_struct* treq;
+    ABT_key_get(g_target_timing_key, (void**)(&treq));
+    if(treq != NULL) {
+      treq->bulk_transfer_bw = bw;
+      treq->bulk_transfer_start = start;
+      treq->bulk_transfer_end = end+start;
+    }
+    /* SYMBIOSYS end */
 
     return (hret);
 }
@@ -1614,31 +1747,11 @@ void __margo_internal_decr_pending(margo_instance_id mid)
     ABT_mutex_unlock(mid->pending_operations_mtx);
 }
 
-static void margo_internal_breadcrumb_handler_set(uint64_t rpc_breadcrumb)
-{
-    uint64_t* val;
-
-    ABT_key_get(g_margo_rpc_breadcrumb_key, (void**)(&val));
-
-    if (val == NULL) {
-        /* key not set yet on this ULT; we need to allocate a new one */
-        /* best effort; just return and don't set it if we can't allocate memory
-         */
-        val = malloc(sizeof(*val));
-        if (!val) return;
-    }
-    *val = rpc_breadcrumb;
-
-    ABT_key_set(g_margo_rpc_breadcrumb_key, val);
-
-    return;
-}
-
 void __margo_internal_pre_wrapper_hooks(margo_instance_id mid,
-                                        hg_handle_t       handle)
+                                        hg_handle_t       handle
+					double ts)
 {
     hg_return_t                  ret;
-    uint64_t*                    rpc_breadcrumb;
     const struct hg_info*        info;
     struct margo_request_struct* req;
 
@@ -1652,36 +1765,11 @@ void __margo_internal_pre_wrapper_hooks(margo_instance_id mid,
         exit(-1);
         // LCOV_EXCL_END
     }
-    *rpc_breadcrumb = le64toh(*rpc_breadcrumb);
 
-    /* add the incoming breadcrumb info to a ULT-local key if profiling is
-     * enabled */
-    if (mid->profile_enabled) {
+    /* SYMBIOSYS begin */
+    __margo_internal_start_server_time(mid, handle, ts);
+    /* SYMBIOSYS end */
 
-        ABT_key_get(g_margo_target_timing_key, (void**)(&req));
-
-        if (req == NULL) { req = calloc(1, sizeof(*req)); }
-
-        req->rpc_breadcrumb = *rpc_breadcrumb;
-
-        req->timer       = NULL;
-        req->handle      = handle;
-        req->start_time  = ABT_get_wtime(); /* measure start time */
-        info             = HG_Get_info(handle);
-        req->provider_id = 0;
-        req->provider_id
-            += ((info->id) & (((1 << (__MARGO_PROVIDER_ID_SIZE * 8)) - 1)));
-        req->server_addr_hash = mid->self_addr_hash;
-
-        /* Note: we use this opportunity to retrieve the incoming RPC
-         * breadcrumb and put it in a thread-local argobots key.  It is
-         * shifted down 16 bits so that if this handler in turn issues more
-         * RPCs, there will be a stack showing the ancestry of RPC calls that
-         * led to that point.
-         */
-        ABT_key_set(g_margo_target_timing_key, req);
-        margo_internal_breadcrumb_handler_set((*rpc_breadcrumb) << 16);
-    }
 }
 
 void __margo_internal_post_wrapper_hooks(margo_instance_id mid)

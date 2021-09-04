@@ -15,9 +15,9 @@ ABT_key           g_margo_rpc_breadcrumb_key = ABT_KEY_NULL;
 ABT_key           g_margo_target_timing_key  = ABT_KEY_NULL;
 margo_log_level   g_margo_log_level          = MARGO_LOG_ERROR;
 ABTX_prof_context g_margo_abt_prof_context;
-/* Mercury Profiling Interface */
-#ifdef MERCURY_PROFILING
-static hg_prof_pvar_session_t pvar_session;
-static hg_prof_pvar_handle_t *pvar_handle;
-static int *pvar_count;
-#endif
+
+/* SYMBIOSYS start */
+static ABT_key g_margo_trace_id_key = ABT_KEY_NULL;
+static ABT_key g_margo_request_order_key = ABT_KEY_NULL;
+
+/* SYMBIOSYS end */
