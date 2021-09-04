@@ -290,6 +290,13 @@ void margo_finalize(margo_instance_id mid)
 
         MARGO_TRACE(mid, "Dumping profile");
         margo_profile_dump(mid, "profile", 1);
+
+	/* SYMBIOSYS BEGIN */
+        __margo_system_stats_thread_stop(mid);
+        margo_system_stats_dump(mid, "profile", 1);
+	free(mid->system_stats);
+	mid->system_stats = NULL;
+	/* SYMBIOSYS END */
     }
 
     if (mid->diag_enabled) {
@@ -1534,9 +1541,11 @@ int margo_set_param(margo_instance_id mid, const char* key, const char* value)
         if (!old_enable_profiling && enable_profiling) {
             /* toggle from off to on */
             __margo_sparkline_thread_start(mid);
+            __margo_system_stats_thread_start(mid); //SYMBIOSYS
         } else if (old_enable_profiling && !enable_profiling) {
             /* toggle from on to off */
             __margo_sparkline_thread_stop(mid);
+            __margo_system_stats_thread_stop(mid); //SYMBIOSYS
         }
         json_object_object_add(mid->json_cfg, "enable_profiling",
                                json_object_new_boolean(enable_profiling));

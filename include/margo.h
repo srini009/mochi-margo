@@ -1260,6 +1260,32 @@ void margo_state_dump(margo_instance_id mid,
  */
 void margo_profile_dump(margo_instance_id mid, const char* file, int uniquify);
 
+/* SYMBIOSYS BEGIN */
+/**
+ * Appends system statistics (enabled via margo_profile_start()) to specified 
+ * output file.
+ *
+ * @param [in] mid Margo instance
+ * @param [in] file output file ("-" for stdout)
+ * @param [in] uniquify flag indicating if file name should have additional
+ *   information added to it to make output from different processes unique
+ * @returns void
+ */
+void margo_system_stats_dump(margo_instance_id mid, const char* file, int uniquify);
+
+/**
+ * Writes out traces (enabled via margo_profile_start()) to specified 
+ * output file.
+ *
+ * @param [in] mid Margo instance
+ * @param [in] file output file ("-" for stdout)
+ * @param [in] uniquify flag indicating if file name should have additional
+ *   information added to it to make output from different processes unique
+ * @returns void
+ */
+void margo_trace_dump(margo_instance_id mid, const char* file, int uniquify);
+/* SYMBIOSYS END */
+
 /**
  * Grabs a snapshot of the current state of diagnostics within the margo
  * instance

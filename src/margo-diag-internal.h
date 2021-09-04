@@ -7,6 +7,7 @@
 #define __MARGO_DIAG_INTERNAL_H
 
 #include <stdio.h>     /* defines printf for tests */
+#include <stdlib.h>    /* defines getloadavg for system stats */
 #include <time.h>      /* defines time_t for timings in the test */
 #include <stdint.h>    /* defines uint32_t etc */
 #include <sys/param.h> /* attempt to define endianness */
@@ -18,6 +19,9 @@
 
 void __margo_sparkline_thread_start(margo_instance_id mid);
 void __margo_sparkline_thread_stop(margo_instance_id mid);
+
+void __margo_system_stats_thread_start(margo_instance_id mid);
+void __margo_system_stats_thread_stop(margo_instance_id mid);
 
 void __margo_print_diag_data(margo_instance_id mid,
                              FILE*             file,

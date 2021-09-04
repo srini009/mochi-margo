@@ -155,6 +155,12 @@ struct margo_instance {
     struct diag_data  diag_bulk_create_elapsed;
     struct diag_data* diag_rpc;
     ABT_mutex         diag_rpc_mutex;
+
+    /* SYMBIOSYS BEGIN */
+    ABT_thread        system_data_collection_tid;
+    uint16_t          system_stats_index;
+    margo_system_stat * system_stats;
+    /* SYMBIOSYS END */
 };
 
 struct margo_request_struct {

@@ -19,6 +19,72 @@ static void  margo_diag_dump_fp(margo_instance_id mid, FILE* outfile);
 static void  margo_diag_dump_abt_fp(margo_instance_id mid, FILE* outfile);
 static void  margo_profile_dump_fp(margo_instance_id mid, FILE* outfile);
 
+static double calculate_percent_cpu_util()
+{
+    char str[100], dummy[10];
+    uint64_t user, nice, system, idle, iowait_1, iowait_2, iowait_3, irq, softirq, steal;
+    FILE* fp = fopen("/proc/stat","r");
+    fgets(str,100,fp);
+    fclose(fp);
+    sscanf(str, "%s %lu %lu %lu %lu %lu %lu %lu %lu %lu %lu", dummy, &user, &nice, &system, &idle, &iowait_1, &iowait_2, &iowait_3, &irq, &softirq, &steal);
+    return (1.0-((double)idle/(double)(user+nice+system+idle+iowait_1+iowait_2+iowait_3+irq+softirq+steal)))*100.0;
+}
+
+static double calculate_percent_memory_util()
+{
+    char str1[100], str2[100], dummy1[20], dummy2[20], dummy3[20], dummy4[20];
+    char * buf1 = str1;
+    char * buf2 = str2;
+    uint64_t memtotal, memfree;
+    FILE* fp = fopen("/proc/meminfo","r");
+    size_t s1 = 100, s2 = 100;
+    getline(&buf1, &s1, fp);
+    getline(&buf2, &s2, fp);
+    sscanf(str1, "%s %lu %s", dummy1, &memtotal, dummy2);
+    sscanf(str2, "%s %lu %s", dummy3, &memfree, dummy4);
+    fclose(fp);
+    return (1.0-((double)memfree/(double)memtotal))*100.0;
+}
+
+void __margo_system_stats_data_collection_fn(void* foo)
+{
+    int ret;
+    struct margo_instance *mid = (struct margo_instance *)foo;
+    double time_passed, end = 0;
+    struct diag_data *stat, *tmp;
+    double load_averages[3];
+    char str[100];
+
+    /* double check that profile collection should run, else, close this ULT */
+    if(!mid->profile_enabled) {
+      ABT_thread_join(mid->system_stats_collection_tid);
+      ABT_thread_free(&mid->system_stats_collection_tid);
+    }
+
+    int sleep_time_msec = 1000; //TODO: Get this from a configuration, like the sparkline time
+
+    while(!mid->hg_progress_shutdown_flag)
+    {
+      
+        margo_thread_sleep(mid, sleep_time_msec);
+        getloadavg(load_averages, 3);
+        mid->system_stats[mid->system_stats_index].loadavg_1m = load_averages[0];
+        mid->system_stats[mid->system_stats_index].loadavg_5m = load_averages[1];
+        mid->system_stats[mid->system_stats_index].loadavg_15m = load_averages[2];
+        mid->system_stats[mid->system_stats_index].system_cpu_util = calculate_percent_cpu_util();
+        mid->system_stats[mid->system_stats_index].system_memory_util = calculate_percent_memory_util();
+
+        ABT_pool_get_total_size(mid->handler_pool, &(mid->system_stats[mid->system_stats_index].abt_pool_total_size));
+        ABT_pool_get_size(mid->handler_pool, &(mid->system_stats[mid->system_stats_index].abt_pool_size));
+
+        mid->system_stats[mid->system_stats_index].ts = ABT_get_wtime();
+        mid->system_stats_index++;
+   }
+
+   return;
+}
+/* SYMBIOSYS END */
+
 void __margo_sparkline_data_collection_fn(void* foo)
 {
     struct margo_instance* mid = (struct margo_instance*)foo;
@@ -99,8 +165,20 @@ void __margo_print_profile_data(margo_instance_id mid,
     else
         avg = 0;
 
+    /* SYMBIOSYS BEGIN */
     /* first line is breadcrumb data */
-    fprintf(file,
+    fprintf(file, "%s,%.9f,%lu,%lu,%d,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%lu,%.9f,%.9f,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%.9f,%.9f,%.9f,%.9f\n", name, avg, data->key.rpc_breadcrumb, data->key.addr_hash, data->type, data->stats.cumulative, data->stats.handler_time, data->stats.completion_callback_time, data->stats.input_serial_time, data->stats.input_deserial_time, data->stats.output_serial_time, data->stats.internal_rdma_transfer_time, data->stats.internal_rdma_transfer_size, data->stats.min, data->stats.max, data->stats.count, data->stats.abt_pool_size_hwm, data->stats.abt_pool_size_lwm, data->stats.abt_pool_size_cumulative, data->stats.abt_pool_total_size_hwm, data->stats.abt_pool_total_size_lwm, data->stats.abt_pool_total_size_cumulative, data->stats.bulk_transfer_time, data->stats.bulk_create_elapsed, data->stats.bulk_free_elapsed, data->stats.operation_time);
+
+    /* second line is sparkline data for the given breadcrumb*/
+    fprintf(file, "%s,%d;", name, data->type);
+    for(i = 0; (i < mid->sparkline_index && i < SPARKLINE_ARRAY_LEN); i++)
+      fprintf(file, "%.9f,%.9f, %d;", data->sparkline_time[i], data->sparkline_count[i], i);
+    fprintf(file,"\n");
+
+    /* SYMBIOSYS END */
+
+    /* first line is breadcrumb data */
+    /*fprintf(file,
             "%s,%.9f,%lu,%lu,%d,%.9f,%.9f,%.9f,%lu,%lu,%lu,%lu,%lu,%lu,%lu\n",
             name, avg, data->key.rpc_breadcrumb, data->key.addr_hash,
             data->type, data->stats.cumulative, data->stats.min,
@@ -110,12 +188,11 @@ void __margo_print_profile_data(margo_instance_id mid,
             data->stats.abt_pool_total_size_lwm,
             data->stats.abt_pool_total_size_cumulative);
 
-    /* second line is sparkline data for the given breadcrumb*/
     fprintf(file, "%s,%d;", name, data->type);
     for (i = 0; (i < mid->sparkline_index && i < SPARKLINE_ARRAY_LEN); i++)
         fprintf(file, "%.9f,%.9f, %d;", data->sparkline_time[i],
                 data->sparkline_count[i], i);
-    fprintf(file, "\n");
+    fprintf(file, "\n");*/
 
     return;
 }
@@ -573,6 +650,129 @@ void margo_profile_dump(margo_instance_id mid, const char* file, int uniquify)
 
     return;
 }
+
+/* SYMBIOSYS BEGIN */
+void margo_system_stats_dump(margo_instance_id mid, const char* file, int uniquify)
+{
+    FILE *outfile;
+    char revised_file_name[256] = {0};
+    struct margo_registered_rpc *tmp_rpc;
+    char hostname[128] = {0};
+    int pid;
+    int i;
+
+    assert(mid->profile_enabled);
+
+    if(uniquify)
+    {
+        gethostname(hostname, 128);
+        pid = getpid();
+
+        sprintf(revised_file_name, "%s-%s-%d.stats", file, hostname, pid);
+    }
+
+    else
+    {
+        sprintf(revised_file_name, "%s.stats", file);
+    }
+
+    if(strcmp("-", file) == 0)
+    {
+        outfile = stdout;
+    }
+    else
+    {
+        outfile = fopen(revised_file_name, "a");
+        if(!outfile)
+        {
+            perror("fopen");
+            return;
+        }
+    }
+
+    fprintf(outfile, "%s\n", hostname);
+    fprintf(outfile, "%d\n", pid);
+    fprintf(outfile, "%d\n", mid->system_stats_index);
+
+    for(i = 0; i < mid->system_stats_index; i++)
+      fprintf(outfile, "%.9f, %d, %d, %.9f, %.9f, %.9f, %.9f, %.9f\n", mid->system_stats[i].ts, mid->system_stats[i].abt_pool_size, mid->system_stats[i].abt_pool_total_size, mid->system_stats[i].system_cpu_util, mid->system_stats[i].system_memory_util, mid->system_stats[i].loadavg_1m, mid->system_stats[i].loadavg_5m, mid->system_stats[i].loadavg_15m);
+
+
+    if(outfile != stdout)
+        fclose(outfile);
+
+    return;
+}
+
+void margo_trace_dump(margo_instance_id mid, const char* file, int uniquify)
+{
+    FILE *outfile;
+    char revised_file_name[256] = {0};
+    struct margo_registered_rpc *tmp_rpc;
+    int i;
+    char hostname[128] = {0};
+    int pid;
+
+    assert(mid->profile_enabled);
+
+    if(uniquify)
+    {
+        gethostname(hostname, 128);
+        pid = getpid();
+
+        sprintf(revised_file_name, "%s-%s-%d.trace", file, hostname, pid);
+    }
+
+    else
+    {
+        sprintf(revised_file_name, "%s.trace", file);
+    }
+
+    if(strcmp("-", file) == 0)
+    {
+        outfile = stdout;
+    }
+    else
+    {
+        outfile = fopen(revised_file_name, "a");
+        if(!outfile)
+        {
+            perror("fopen");
+            return;
+        }
+    }
+
+    fprintf(outfile, "%s\n", hostname);
+    fprintf(outfile, "%d\n", pid);
+    fprintf(outfile, "%u\n", mid->num_registered_rpcs);
+    tmp_rpc = mid->registered_rpcs;
+
+    while(tmp_rpc)
+    {
+        fprintf(outfile, "%lu, %s\n", tmp_rpc->rpc_breadcrumb_fragment, tmp_rpc->func_name);
+        tmp_rpc = tmp_rpc->next;
+    }
+
+    for(i = 0; i < mid->trace_record_index; i++) {
+      fprintf(outfile, "%lu, %.9f, %lu, %d, %d, %d, %lu, %d, %d, %lu, %lu, %.9f, %.9f, %.9f, %.9f, %.9f, %.9f\n", mid->trace_records[i].trace_id, mid->trace_records[i].ts, mid->trace_records[i].rpc, mid->trace_records[i].ev, mid->trace_records[i].metadata.abt_pool_size, mid->trace_records[i].metadata.abt_pool_total_size, mid->trace_records[i].metadata.mid, mid->trace_records[i].order, mid->trace_id_counter, mid->trace_records[i].metadata.usage.ru_maxrss, mid->trace_records[i].ofi_events_read, mid->trace_records[i].bulk_transfer_bw,  mid->trace_records[i].bulk_transfer_start,  mid->trace_records[i].bulk_transfer_end, mid->trace_records[i].operation_bw, mid->trace_records[i].operation_start, mid->trace_records[i].operation_stop);
+
+      /* Below is the chrome-compatible format */
+      /*if(mid->trace_records[i].ev == 0 || mid->trace_records[i].ev == 3) {
+         fprintf(outfile, "{\"name\":\"%lu\", \"cat\": \"PERF\", \"ph\":\"B\", \"pid\": %lu, \"ts\": %f, \"trace_id\": %lu},\n", mid->trace_records[i].rpc, mid->trace_records[i].metadata.mid, (mid->trace_records[i].ts - mid->trace_collection_start_time), mid->trace_records[i].trace_id);
+      } else {
+         fprintf(outfile, "{\"name\":\"%lu\", \"cat\": \"PERF\", \"ph\":\"E\", \"pid\": %lu, \"ts\": %f, \"trace_id\": %lu},\n", mid->trace_records[i].rpc, mid->trace_records[i].metadata.mid, (mid->trace_records[i].ts - mid->trace_collection_start_time), mid->trace_records[i].trace_id);
+      }*/
+    }
+
+    fprintf(stderr, "Margo Instance has %d trace record_entries\n", mid->trace_record_index); 
+
+    if(outfile != stdout)
+        fclose(outfile);
+
+    return;
+}
+/* SYMBIOSYS END */
+
 void margo_state_dump(margo_instance_id mid,
                       const char*       file,
                       int               uniquify,
@@ -735,6 +935,39 @@ void __margo_sparkline_thread_start(margo_instance_id mid)
             0,
             "Failed to start sparkline data collection thread, "
             "continuing to profile without sparkline data collection");
+    }
+
+    return;
+}
+
+void __margo_system_stats_thread_stop(margo_instance_id mid)
+{
+    if (!mid->profile_enabled) return;
+
+    MARGO_TRACE(mid,
+                "Waiting for sparkline data collection thread to complete");
+    ABT_thread_join(mid->system_stats_data_collection_tid);
+    ABT_thread_free(&mid->system_stats_data_collection_tid);
+
+    return;
+}
+
+void __margo_system_stats_thread_start(margo_instance_id mid)
+{
+    int ret;
+
+    if (!mid->profile_enabled) return;
+
+    MARGO_TRACE(mid, "Profiling is enabled, starting profiling thread");
+
+    ret = ABT_thread_create(
+        mid->progress_pool, __margo_system_stats_data_collection_fn, mid,
+        ABT_THREAD_ATTR_NULL, &mid->system_stats_data_collection_tid);
+    if (ret != ABT_SUCCESS) {
+        MARGO_WARNING(
+            0,
+            "Failed to start system stats data collection thread, "
+            "continuing to profile without system stats data collection");
     }
 
     return;

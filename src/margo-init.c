@@ -21,6 +21,7 @@
 /* default values for key ABT parameters if not specified */
 #define MARGO_DEFAULT_ABT_MEM_MAX_NUM_STACKS 8
 #define MARGO_DEFAULT_ABT_THREAD_STACKSIZE   2097152
+#define MARGO_SYSTEM_STAT_SIZE 10000
 
 // Validates the format of the configuration and
 // fill default values if they are note provided
@@ -388,7 +389,15 @@ margo_instance_id margo_init_ext(const char*                   address,
     HASH_JEN(name, strlen(name), mid->self_addr_hash);
     free(name);
 
-    if (profile_enabled) __margo_sparkline_thread_start(mid);
+    if (profile_enabled) {
+        __margo_sparkline_thread_start(mid);
+	/* SYMBIOSYS BEGIN */
+	mid->sparkline_index = 0;
+        mid->system_stats_index = 0;	
+	__margo_system_stats_thread_start(mid);
+        mid->system_stats = (margo_system_stat *)calloc(MARGO_SYSTEM_STAT_SIZE, sizeof(margo_system_stat));
+	/* SYMBIOSYS END */
+    }
 
     /* END diagnostics/profiling initialization */
 
