@@ -299,6 +299,9 @@ void margo_finalize(margo_instance_id mid)
 	mid->system_stats = NULL;
 	free(mid->trace_records);
 	mid->trace_records = NULL;
+        #ifdef MERCURY_PROFILING
+        __margo_finalize_mercury_profiling_interface(mid->hg_class);
+        #endif
 	/* SYMBIOSYS END */
     }
 
@@ -808,17 +811,24 @@ static hg_return_t margo_cb(const struct hg_cb_info* info)
         mid = margo_hg_handle_get_instance(req->handle);
 
         if (mid->profile_enabled) {
+    /* SYMBIOSYS start */
             /* 0 here indicates this is a origin-side call */
-            __margo_breadcrumb_measure(mid, req->rpc_breadcrumb,
-                                       req->start_time, 0, req->provider_id,
-                                       req->server_addr_hash, req->handle);
-	    /* SYMBIOSYS start */
+	    __margo_breadcrumb_measure(mid, req, 0);
             uint64_t * current_order;
             int ret = HG_Get_output_buf(req->handle, (void**)&current_order, NULL);
             assert(ret == HG_SUCCESS);
             __margo_internal_generate_trace_event(mid, req->trace_id, cr, req->current_rpc, (*current_order) + 1, 0, 0, 0);
-	    /* SYMBIOSYS end */
         }
+    } else if(req->rpc_breadcrumb != 0 && req->is_server == 1) {
+        /* This is the callback from an HG_Respond call.  Track RPC timing
+         * information.*/
+          uint64_t * temp;
+          mid = margo_hg_handle_get_instance(req->handle);
+          assert(mid);
+
+          /* the "1" indicates that this a target-side breadcrumb */
+          __margo_breadcrumb_measure(mid, req, 1);
+     /* SYMBIOSYS end */
     }
 
     /* propagate return code out through eventual */

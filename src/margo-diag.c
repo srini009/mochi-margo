@@ -20,6 +20,56 @@ static void  margo_diag_dump_abt_fp(margo_instance_id mid, FILE* outfile);
 static void  margo_profile_dump_fp(margo_instance_id mid, FILE* outfile);
 
 /* SYMBIOSYS begin */
+#ifdef MERCURY_PROFILING
+/* Initialize the Mercury Profiling Interface */
+void __margo_initialize_mercury_profiling_interface(hg_class_t *hg_class) {
+
+       char name[128];
+       char desc[128];
+       int name_len, desc_len, continuous;
+       hg_prof_class_t pvar_class;
+       hg_prof_datatype_t pvar_datatype;
+       hg_prof_bind_t pvar_bind;
+       HG_Prof_init(hg_class);
+       //HG_Prof_pvar_get_info(hg_class, 0, name, &name_len, &pvar_class, &pvar_datatype, desc, &desc_len, &pvar_bind, &continuous);
+       int num_pvars;
+       num_pvars = HG_Prof_pvar_get_num(hg_class);
+       fprintf(stderr, "[MARGO] Initializing profiling interface. Num PVARs exported: %d\n", num_pvars);
+       HG_Prof_pvar_session_create(hg_class, &pvar_session);
+       pvar_handle = (hg_prof_pvar_handle_t*)malloc(num_pvars*sizeof(hg_prof_pvar_handle_t));
+       pvar_count = (int*)malloc(num_pvars*sizeof(int));
+       for(int i = 0 ; i < num_pvars; i++)
+         HG_Prof_pvar_handle_alloc(pvar_session, i, NULL, &(pvar_handle[i]), &(pvar_count[i]));
+}
+
+/* Finalize the Mercury Profiling Interface */
+void __margo_finalize_mercury_profiling_interface(hg_class_t *hg_class) {
+       int ret;
+
+       int num_pvars = HG_Prof_pvar_get_num(hg_class);
+       for(int i = 0; i < num_pvars; i++) {
+         ret = HG_Prof_pvar_handle_free(pvar_session, 0, &(pvar_handle[i]));
+         assert(ret == HG_SUCCESS);
+       }
+
+       ret = HG_Prof_pvar_session_destroy(hg_class, &pvar_session);
+       assert(ret == HG_SUCCESS);
+       ret = HG_Prof_finalize(hg_class);
+       assert(ret == HG_SUCCESS);
+       free(pvar_count);
+       free(pvar_handle);
+       fprintf(stderr, "[MARGO] Successfully shutdown profiling interface \n");
+}
+
+/* Query the Mercury PVAR interface */
+void __margo_read_pvar_data(margo_instance_id mid, hg_handle_t handle, int index, void *buf) {
+   double * temp = (double *)malloc(sizeof(double));
+
+   HG_Prof_pvar_read(pvar_session, pvar_handle[index], handle, (void*)temp);
+   *(double*)buf += *(double*)temp;
+   free(temp);
+}
+#endif
 
 void __margo_internal_breadcrumb_handler_set(uint64_t rpc_breadcrumb)
 {
@@ -351,17 +401,20 @@ void __margo_print_profile_data(margo_instance_id mid,
 /* records statistics for a breadcrumb, to be used after completion of an
  * RPC, both on the origin as well as on the target */
 void __margo_breadcrumb_measure(margo_instance_id     mid,
-                                uint64_t              rpc_breadcrumb,
-                                double                start,
-                                margo_breadcrumb_type type,
-                                uint16_t              provider_id,
-                                uint64_t              hash,
-                                hg_handle_t           h)
+				margo_request req,
+                                margo_breadcrumb_type type)
 {
-    struct diag_data* stat;
-    double            end, elapsed;
-    uint16_t          t = (type == origin) ? 2 : 1;
-    uint64_t          hash_;
+    /* SYMBIOSYS begin */
+    uint64_t rpc_breadcrumb = req->rpc_breadcrumb;
+    double start = req->start_time;
+    uint16_t provider_id = req->provider_id;
+    uint64_t hash = req->server_addr_hash;
+    hg_handle_t h = req->handle;
+    struct diag_data *stat;
+    double end, elapsed;
+    uint16_t t = (type == origin) ? 2: 1;
+    uint64_t hash_;
+    /* SYMBIOSYS end */
 
     __uint128_t x = 0;
 
@@ -463,7 +516,33 @@ void __margo_breadcrumb_measure(margo_instance_id     mid,
     /* Argobots pool info */
 
     stat->stats.count++;
-    stat->stats.cumulative += elapsed;
+    /* SYMBIOSYS begin */
+    if(type) {
+      stat->stats.cumulative += req->ult_time;
+      stat->stats.handler_time += req->handler_time;
+      stat->stats.completion_callback_time += elapsed;
+      elapsed += req->ult_time + req->handler_time;
+      stat->stats.bulk_transfer_time += req->bulk_transfer_end - req->bulk_transfer_start;
+      stat->stats.operation_time += req->operation_stop_time - req->operation_start_time;
+      stat->stats.bulk_create_elapsed += req->bulk_create_elapsed;
+      stat->stats.bulk_free_elapsed += req->bulk_free_elapsed;
+      #ifdef MERCURY_PROFILING
+      /* Read the exported PVAR data from the Mercury Profiling Interface */
+      __margo_read_pvar_data(mid, req->handle, 6, (void*)&stat->stats.internal_rdma_transfer_time);
+      __margo_read_pvar_data(mid, req->handle, 7, (void*)&stat->stats.internal_rdma_transfer_size);
+      __margo_read_pvar_data(mid, req->handle, 9, (void*)&stat->stats.input_deserial_time);
+      __margo_read_pvar_data(mid, req->handle, 11, (void*)&stat->stats.output_serial_time);
+      #endif
+    } else {
+      stat->stats.cumulative += elapsed;
+      stat->stats.handler_time = 0;
+      #ifdef MERCURY_PROFILING
+      /* Read the exported PVAR data from the Mercury Profiling Interface */
+      __margo_read_pvar_data(mid, req->handle, 5, (void*)&stat->stats.completion_callback_time);
+      __margo_read_pvar_data(mid, req->handle, 8, (void*)&stat->stats.input_deserial_time);
+      #endif
+    }
+    /* SYMBIOSYS end */
     if (elapsed > stat->stats.max) stat->stats.max = elapsed;
     if (stat->stats.min == 0 || elapsed < stat->stats.min)
         stat->stats.min = elapsed;

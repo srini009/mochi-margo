@@ -29,6 +29,15 @@ void __margo_system_stats_thread_stop(margo_instance_id mid);
 void __margo_internal_generate_trace_event(margo_instance_id mid, uint64_t trace_id, ev_type ev, uint64_t rpc, uint64_t order, double bw, double bw_start, double bw_end);
 void __margo_internal_start_server_time(margo_instance_id mid, hg_handle_t handle, double ts);   
 void __margo_internal_breadcrumb_handler_set(uint64_t rpc_breadcrumb);
+#ifdef MERCURY_PROFILING
+void __margo_initialize_mercury_profiling_interface(hg_class_t *hg_class);
+void __margo_finalize_mercury_profiling_interface(hg_class_t *hg_class);
+void __margo_read_pvar_data(margo_instance_id mid, hg_handle_t handle, int index, void* buf);
+#endif
+
+void __margo_breadcrumb_measure(margo_instance_id     mid,
+                                margo_request req,
+                                margo_breadcrumb_type type);
 /* SYMBIOSYS end */
 
 void __margo_print_diag_data(margo_instance_id mid,
@@ -44,14 +53,6 @@ void __margo_print_profile_data(margo_instance_id mid,
                                 struct diag_data* data);
 
 uint64_t __margo_breadcrumb_set(hg_id_t rpc_id);
-
-void __margo_breadcrumb_measure(margo_instance_id     mid,
-                                uint64_t              rpc_breadcrumb,
-                                double                start,
-                                margo_breadcrumb_type type,
-                                uint16_t              provider_id,
-                                uint64_t              hash,
-                                hg_handle_t           h);
 
 #define GET_SELF_ADDR_STR(__mid, __addr_str)                              \
     do {                                                                  \

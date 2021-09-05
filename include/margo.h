@@ -44,6 +44,18 @@ typedef void (*margo_finalize_callback_t)(void*);
 #define MARGO_DEFAULT_PROVIDER_ID 0
 #define MARGO_MAX_PROVIDER_ID     ((1 << (8 * __MARGO_PROVIDER_ID_SIZE)) - 1)
 
+/* SYMBIOSYS begin */
+extern void __margo_internal_start_server_time(margo_instance_id mid, hg_handle_t handle, double ts);
+
+struct custom_handle {
+  hg_handle_t handle;
+  ABT_timer timer;
+  double ts;
+};
+
+typedef struct custom_handle custom_handle;
+/* SYMBIOSYS end */
+
 /**
  * The margo_init_info structure should be passed to margo_init_ext
  * to finely configure Margo. The structure can be memset to 0 to have
@@ -1470,7 +1482,8 @@ void __margo_internal_decr_pending(margo_instance_id mid);
  * called by users!
  */
 void __margo_internal_pre_wrapper_hooks(margo_instance_id mid,
-                                        hg_handle_t       handle);
+                                        hg_handle_t       handle,
+					double ts); //SYMBIOSYS
 
 /**
  * @private
@@ -1497,10 +1510,12 @@ void __margo_internal_post_wrapper_hooks(margo_instance_id mid);
 
 #define _handler_for_NULL NULL
 
+/* SYMBIOSYS begin */
 #define __MARGO_INTERNAL_RPC_WRAPPER_BODY(__name)                 \
     margo_instance_id __mid;                                      \
+    hg_handle_t handle = c->handle;                               \
     __mid = margo_hg_handle_get_instance(handle);                 \
-    __margo_internal_pre_wrapper_hooks(__mid, handle);            \
+    __margo_internal_pre_wrapper_hooks(__mid, handle, c->ts);     \
     margo_trace(__mid, "Starting RPC " #__name " (handle = %p)",  \
                 (void*)handle);                                   \
     __name(handle);                                               \
@@ -1509,7 +1524,7 @@ void __margo_internal_post_wrapper_hooks(margo_instance_id mid);
     __margo_internal_post_wrapper_hooks(__mid);
 
 #define __MARGO_INTERNAL_RPC_WRAPPER(__name)       \
-    void _wrapper_for_##__name(hg_handle_t handle) \
+    void _wrapper_for_##__name(custom_handle *c) \
     {                                              \
         __MARGO_INTERNAL_RPC_WRAPPER_BODY(__name)  \
     }
@@ -1525,6 +1540,9 @@ void __margo_internal_post_wrapper_hooks(margo_instance_id mid);
         margo_destroy(handle);                                                 \
         return (HG_OTHER_ERROR);                                               \
     }                                                                          \
+    custom_handle *c = (custom_handle*)malloc(sizeof(custom_handle));          \
+    c->handle = handle;                                                        \
+    c->ts = ABT_get_wtime();                                                   \
     if (__margo_internal_finalize_requested(__mid)) {                          \
         margo_warning(__mid,                                                   \
                       "Ignoring " #__name " RPC because margo is finalizing"); \
@@ -1539,7 +1557,7 @@ void __margo_internal_post_wrapper_hooks(margo_instance_id mid);
                 "(handle = %p)",                                               \
                 (void*)handle);                                                \
     __ret = ABT_thread_create(__pool, (void (*)(void*))_wrapper_for_##__name,  \
-                              handle, ABT_THREAD_ATTR_NULL, NULL);             \
+                              (void *)c, ABT_THREAD_ATTR_NULL, NULL);          \
     if (__ret != 0) {                                                          \
         margo_error(__mid,                                                     \
                     "Could not create ULT for " #__name " RPC (ret = %d)",     \
@@ -1555,6 +1573,7 @@ void __margo_internal_post_wrapper_hooks(margo_instance_id mid);
     {                                                     \
         __MARGO_INTERNAL_RPC_HANDLER_BODY(__name)         \
     }
+/* SYMBIOSYS end */
 
 /**
  * macro that defines a function to glue an RPC handler to a ult handler

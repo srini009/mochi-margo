@@ -409,6 +409,10 @@ margo_instance_id margo_init_ext(const char*                   address,
         mid->trace_record_index = 0;
         mid->trace_id_counter = 0;
         mid->trace_collection_start_time = ABT_get_wtime();
+        /* Initialize the Mercury Profiling Interface */
+        #ifdef MERCURY_PROFILING
+        __margo_initialize_mercury_profiling_interface(hg_class);
+        #endif
 	/* SYMBIOSYS END */
     }
 

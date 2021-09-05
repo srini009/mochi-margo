@@ -37,6 +37,11 @@ extern ABT_key g_margo_target_timing_key;
 /* SYMBIOSYS begin */
 extern ABT_key g_margo_trace_id_key;
 extern ABT_key g_margo_request_order_key;
+#ifdef MERCURY_PROFILING
+extern hg_prof_pvar_session_t pvar_session;
+extern hg_prof_pvar_handle_t *pvar_handle;
+extern int *pvar_count;
+#endif
 /* SYMBIOSYS end */
 
 #endif
