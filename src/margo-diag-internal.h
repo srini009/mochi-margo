@@ -26,7 +26,7 @@ void __margo_internal_request_order_set(uint64_t order);
 
 void __margo_system_stats_thread_start(margo_instance_id mid);
 void __margo_system_stats_thread_stop(margo_instance_id mid);
-void __margo_internal_generate_trace_event(margo_instance_id mid, uint64_t trace_id, ev_type ev, uint64_t rpc, uint64_t order, double bw, double bw_start, double bw_end);
+void __margo_internal_generate_trace_event(margo_instance_id mid, uint64_t trace_id, margo_trace_ev_type ev, uint64_t rpc, uint64_t order, double bw, double bw_start, double bw_end);
 void __margo_internal_start_server_time(margo_instance_id mid, hg_handle_t handle, double ts);   
 void __margo_internal_breadcrumb_handler_set(uint64_t rpc_breadcrumb);
 #ifdef MERCURY_PROFILING

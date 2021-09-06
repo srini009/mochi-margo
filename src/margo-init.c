@@ -379,10 +379,10 @@ margo_instance_id margo_init_ext(const char*                   address,
     if (ret != ABT_SUCCESS) goto error;
 
     /* SYMBIOSYS begin */
-    ret = ABT_key_create(free, &g_trace_id_key);
+    ret = ABT_key_create(free, &g_margo_trace_id_key);
     if (ret != ABT_SUCCESS) goto error;
   
-    ret = ABT_key_create(free, &g_request_order_key);
+    ret = ABT_key_create(free, &g_margo_request_order_key);
     if (ret != ABT_SUCCESS) goto error;
     /* SYMBIOSYS end */
 

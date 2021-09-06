@@ -10,6 +10,7 @@
 #include <sys/param.h> /* attempt to define endianness */
 #ifdef linux
     #include <endian.h> /* attempt to define endianness */
+    #include <sys/resource.h>
 #endif
 
 #ifndef __MARGO_DIAG
@@ -114,7 +115,7 @@ struct margo_trace_record
   double ts;
   uint64_t rpc;
   size_t ofi_events_read;
-  ev_type ev;
+  margo_trace_ev_type ev;
   uint64_t order;
   struct margo_trace_metadata metadata;
   double bulk_transfer_bw;

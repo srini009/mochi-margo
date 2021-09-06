@@ -155,7 +155,7 @@ __uint128_t __margo_internal_generate_trace_id(margo_instance_id mid)
     return trace_id;
 }
 
-void __margo_internal_generate_trace_event(margo_instance_id mid, uint64_t trace_id, ev_type ev, uint64_t rpc, uint64_t order, double bw, double bw_start, double bw_end)
+void __margo_internal_generate_trace_event(margo_instance_id mid, uint64_t trace_id, margo_trace_ev_type ev, uint64_t rpc, uint64_t order, double bw, double bw_start, double bw_end)
 {
 
    mid->trace_records[mid->trace_record_index].trace_id = trace_id;
@@ -182,7 +182,7 @@ void __margo_internal_trace_id_set(uint64_t trace_id)
 {
     uint64_t *val;
 
-    ABT_key_get(trace_id_key, (void**)(&val));
+    ABT_key_get(g_margo_trace_id_key, (void**)(&val));
 
     if(val == NULL)
     {
@@ -203,7 +203,7 @@ void __margo_internal_request_order_set(uint64_t order)
 {
     uint64_t *val;
 
-    ABT_key_get(request_order_key, (void**)(&val));
+    ABT_key_get(g_margo_request_order_key, (void**)(&val));
 
     if(val == NULL)
     {
@@ -258,8 +258,8 @@ void __margo_system_stats_data_collection_fn(void* foo)
 
     /* double check that profile collection should run, else, close this ULT */
     if(!mid->profile_enabled) {
-      ABT_thread_join(mid->system_stats_collection_tid);
-      ABT_thread_free(&mid->system_stats_collection_tid);
+      ABT_thread_join(mid->system_data_collection_tid);
+      ABT_thread_free(&mid->system_data_collection_tid);
     }
 
     int sleep_time_msec = 1000; //TODO: Get this from a configuration, like the sparkline time
