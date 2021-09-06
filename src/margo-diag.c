@@ -163,7 +163,7 @@ void __margo_internal_generate_trace_event(margo_instance_id mid, uint64_t trace
    mid->trace_records[mid->trace_record_index].rpc = rpc;
    mid->trace_records[mid->trace_record_index].ev = ev;
    #ifdef MERCURY_PROFILING
-   margo_read_pvar_data(mid, NULL, 3, (void*)&mid->trace_records[mid->trace_record_index].ofi_events_read);
+   __margo_read_pvar_data(mid, NULL, 3, (void*)&mid->trace_records[mid->trace_record_index].ofi_events_read);
    #endif
    mid->trace_records[mid->trace_record_index].bulk_transfer_bw = bw;
    mid->trace_records[mid->trace_record_index].bulk_transfer_start = bw_start;
