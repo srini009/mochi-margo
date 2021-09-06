@@ -130,8 +130,6 @@ struct margo_trace_record
 
 struct margo_system_stat
 {
-  size_t abt_pool_size;
-  size_t abt_pool_total_size;
   double system_cpu_util;
   double system_memory_util;
   double loadavg_1m;

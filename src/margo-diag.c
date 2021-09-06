@@ -275,9 +275,6 @@ void __margo_system_stats_data_collection_fn(void* foo)
         mid->system_stats[mid->system_stats_index].system_cpu_util = calculate_percent_cpu_util();
         mid->system_stats[mid->system_stats_index].system_memory_util = calculate_percent_memory_util();
 
-        ABT_pool_get_total_size(mid->handler_pool, &(mid->system_stats[mid->system_stats_index].abt_pool_total_size));
-        ABT_pool_get_size(mid->handler_pool, &(mid->system_stats[mid->system_stats_index].abt_pool_size));
-
         mid->system_stats[mid->system_stats_index].ts = ABT_get_wtime();
         mid->system_stats_index++;
    }
@@ -924,7 +921,7 @@ void margo_system_stats_dump(margo_instance_id mid, const char* file, int uniqui
     fprintf(outfile, "%d\n", mid->system_stats_index);
 
     for(i = 0; i < mid->system_stats_index; i++)
-      fprintf(outfile, "%.9f, %d, %d, %.9f, %.9f, %.9f, %.9f, %.9f\n", mid->system_stats[i].ts, mid->system_stats[i].abt_pool_size, mid->system_stats[i].abt_pool_total_size, mid->system_stats[i].system_cpu_util, mid->system_stats[i].system_memory_util, mid->system_stats[i].loadavg_1m, mid->system_stats[i].loadavg_5m, mid->system_stats[i].loadavg_15m);
+      fprintf(outfile, "%.9f, %.9f, %.9f, %.9f, %.9f, %.9f\n", mid->system_stats[i].ts, mid->system_stats[i].system_cpu_util, mid->system_stats[i].system_memory_util, mid->system_stats[i].loadavg_1m, mid->system_stats[i].loadavg_5m, mid->system_stats[i].loadavg_15m);
 
 
     if(outfile != stdout)
