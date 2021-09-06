@@ -134,7 +134,7 @@ void __margo_internal_start_server_time(margo_instance_id mid, hg_handle_t handl
          * led to that point.
          */
         ABT_key_set(g_margo_target_timing_key, req);
-        __margo_internal_generate_trace_event(mid, (*metadata).trace_id, sr, (*metadata).current_rpc, (*metadata).order + 1, 0, 0, 0, 0, 0, 0);
+        __margo_internal_generate_trace_event(mid, (*metadata).trace_id, sr, (*metadata).current_rpc, (*metadata).order + 1, 0, 0, 0);
         __margo_internal_request_order_set((*metadata).order + 1);
         __margo_internal_breadcrumb_handler_set((*metadata).rpc_breadcrumb << 16);
         __margo_internal_trace_id_set((*metadata).trace_id);
@@ -194,7 +194,7 @@ void __margo_internal_trace_id_set(uint64_t trace_id)
     }
     *val = trace_id;
 
-    ABT_key_set(trace_id_key, val);
+    ABT_key_set(g_margo_trace_id_key, val);
 
     return;
 }
@@ -215,7 +215,7 @@ void __margo_internal_request_order_set(uint64_t order)
     }
     *val = order;
 
-    ABT_key_set(request_order_key, val);
+    ABT_key_set(g_margo_request_order_key, val);
 
     return;
 }
@@ -368,7 +368,7 @@ void __margo_print_profile_data(margo_instance_id mid,
 
     /* SYMBIOSYS BEGIN */
     /* first line is breadcrumb data */
-    fprintf(file, "%s,%.9f,%lu,%lu,%d,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%lu,%.9f,%.9f,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%.9f,%.9f,%.9f,%.9f\n", name, avg, data->key.rpc_breadcrumb, data->key.addr_hash, data->type, data->stats.cumulative, data->stats.handler_time, data->stats.completion_callback_time, data->stats.input_serial_time, data->stats.input_deserial_time, data->stats.output_serial_time, data->stats.internal_rdma_transfer_time, data->stats.internal_rdma_transfer_size, data->stats.min, data->stats.max, data->stats.count, data->stats.abt_pool_size_hwm, data->stats.abt_pool_size_lwm, data->stats.abt_pool_size_cumulative, data->stats.abt_pool_total_size_hwm, data->stats.abt_pool_total_size_lwm, data->stats.abt_pool_total_size_cumulative, data->stats.bulk_transfer_time, data->stats.bulk_create_elapsed, data->stats.bulk_free_elapsed, data->stats.operation_time);
+    fprintf(file, "%s,%.9f,%lu,%lu,%d,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%lu,%.9f,%.9f,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%.9f,%.9f,%.9f\n", name, avg, data->key.rpc_breadcrumb, data->key.addr_hash, data->type, data->stats.cumulative, data->stats.handler_time, data->stats.completion_callback_time, data->stats.input_serial_time, data->stats.input_deserial_time, data->stats.output_serial_time, data->stats.internal_rdma_transfer_time, data->stats.internal_rdma_transfer_size, data->stats.min, data->stats.max, data->stats.count, data->stats.abt_pool_size_hwm, data->stats.abt_pool_size_lwm, data->stats.abt_pool_size_cumulative, data->stats.abt_pool_total_size_hwm, data->stats.abt_pool_total_size_lwm, data->stats.abt_pool_total_size_cumulative, data->stats.bulk_transfer_time, data->stats.bulk_create_elapsed, data->stats.bulk_free_elapsed);
 
     /* second line is sparkline data for the given breadcrumb*/
     fprintf(file, "%s,%d;", name, data->type);
@@ -523,7 +523,6 @@ void __margo_breadcrumb_measure(margo_instance_id     mid,
       stat->stats.completion_callback_time += elapsed;
       elapsed += req->ult_time + req->handler_time;
       stat->stats.bulk_transfer_time += req->bulk_transfer_end - req->bulk_transfer_start;
-      stat->stats.operation_time += req->operation_stop_time - req->operation_start_time;
       stat->stats.bulk_create_elapsed += req->bulk_create_elapsed;
       stat->stats.bulk_free_elapsed += req->bulk_free_elapsed;
       #ifdef MERCURY_PROFILING
@@ -1176,8 +1175,8 @@ void __margo_system_stats_thread_stop(margo_instance_id mid)
 
     MARGO_TRACE(mid,
                 "Waiting for sparkline data collection thread to complete");
-    ABT_thread_join(mid->system_stats_data_collection_tid);
-    ABT_thread_free(&mid->system_stats_data_collection_tid);
+    ABT_thread_join(mid->system_data_collection_tid);
+    ABT_thread_free(&mid->system_data_collection_tid);
 
     return;
 }
@@ -1191,8 +1190,8 @@ void __margo_system_stats_thread_start(margo_instance_id mid)
     MARGO_TRACE(mid, "Profiling is enabled, starting profiling thread");
 
     ret = ABT_thread_create(
-        mid->progress_pool, __margo_system_stats_data_collection_fn, mid,
-        ABT_THREAD_ATTR_NULL, &mid->system_stats_data_collection_tid);
+        mid->progress_pool, __margo_system_data_collection_fn, mid,
+        ABT_THREAD_ATTR_NULL, &mid->system_data_collection_tid);
     if (ret != ABT_SUCCESS) {
         MARGO_WARNING(
             0,

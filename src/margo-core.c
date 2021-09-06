@@ -945,7 +945,7 @@ static hg_return_t margo_provider_iforward_internal(
         if (ret != HG_SUCCESS) return (ret);
         req->rpc_breadcrumb = __margo_breadcrumb_set(hgi->id);
         /* LE encoding */
-        req->rpc_breadcrumb = = htole64(req->rpc_breadcrumb);
+        req->rpc_breadcrumb = htole64(req->rpc_breadcrumb);
 
         req->start_time = ABT_get_wtime();
 
@@ -965,22 +965,22 @@ static hg_return_t margo_provider_iforward_internal(
         (*rpc_breadcrumb).current_rpc &= 0xffff;
         req->current_rpc = (*rpc_breadcrumb).current_rpc;
 
-        ABT_key_get(g_trace_id_key, (void**)(&trace_id));
+        ABT_key_get(g_margo_trace_id_key, (void**)(&trace_id));
 
         if(trace_id == NULL) {
           (*rpc_breadcrumb).trace_id = __margo_internal_generate_trace_id(mid);
           (*rpc_breadcrumb).order = 0;
         } else {
           (*rpc_breadcrumb).trace_id = (*trace_id);
-          ABT_key_get(request_order_key, (void**)&order);
+          ABT_key_get(g_margo_request_order_key, (void**)&order);
           (*rpc_breadcrumb).order = (*order) + 1;
-          margo_internal_request_order_set((*order) + 4);
+          __margo_internal_request_order_set((*order) + 4);
         }
 
-        req->trace_id = (*metadata).trace_id;
+        req->trace_id = (*rpc_breadcrumb).trace_id;
         req->start_time = ABT_get_wtime();
 
-        __margo_internal_generate_trace_event(mid, (*metadata).trace_id, cs, (*metadata).current_rpc, (*metadata).order, 0, 0, 0);
+        __margo_internal_generate_trace_event(mid, (*rpc_breadcrumb).trace_id, cs, (*rpc_breadcrumb).current_rpc, (*rpc_breadcrumb).order, 0, 0, 0);
     }
 
     hret = HG_Forward(handle, margo_cb, (void*)req, in_struct);
@@ -1159,7 +1159,7 @@ hg_return_t margo_respond(hg_handle_t handle, void* out_struct)
     uint64_t * temp;
     double handler_time = 0, ult_time = 0;
     if(mid->profile_enabled) {
-      ABT_key_get(g_request_order_key, (void**)(&order));
+      ABT_key_get(g_margo_request_order_key, (void**)(&order));
       handler_time = treq->handler_time;
       ult_time = ABT_get_wtime() - treq->start_time;
 
@@ -1287,7 +1287,7 @@ static hg_return_t margo_bulk_itransfer_internal(
     double bw;
     bw = ((double)size/end)/1000000;
     struct margo_request_struct* treq;
-    ABT_key_get(g_target_timing_key, (void**)(&treq));
+    ABT_key_get(g_margo_target_timing_key, (void**)(&treq));
     if(treq != NULL) {
       treq->bulk_transfer_bw = bw;
       treq->bulk_transfer_start = start;
@@ -1758,7 +1758,7 @@ void __margo_internal_decr_pending(margo_instance_id mid)
 }
 
 void __margo_internal_pre_wrapper_hooks(margo_instance_id mid,
-                                        hg_handle_t       handle
+                                        hg_handle_t       handle,
 					double ts)
 {
     hg_return_t                  ret;
