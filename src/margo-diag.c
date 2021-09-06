@@ -840,8 +840,10 @@ static void margo_profile_dump_fp(margo_instance_id mid, FILE* outfile)
         tmp_rpc = tmp_rpc->next;
     }
 
+    fprintf(stderr, "Is this invoked?\n");
     HASH_ITER(hh, mid->diag_rpc, dd, tmp)
     {
+	fprintf(stderr , "How many times is this invoked?\n");
         int      i;
         uint64_t tmp_breadcrumb;
         for (i = 0; i < 4; i++) {
