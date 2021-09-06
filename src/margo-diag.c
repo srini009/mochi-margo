@@ -168,8 +168,8 @@ void __margo_internal_generate_trace_event(margo_instance_id mid, uint64_t trace
    mid->trace_records[mid->trace_record_index].bulk_transfer_bw = bw;
    mid->trace_records[mid->trace_record_index].bulk_transfer_start = bw_start;
    mid->trace_records[mid->trace_record_index].bulk_transfer_end = bw_end;
-   ABT_pool_get_total_size(mid->handler_pool, &(mid->trace_records[mid->trace_record_index].metadata.abt_pool_total_size));
-   ABT_pool_get_size(mid->handler_pool, &(mid->trace_records[mid->trace_record_index].metadata.abt_pool_size));
+   ABT_pool_get_total_size(mid->rpc_pool, &(mid->trace_records[mid->trace_record_index].metadata.abt_pool_total_size));
+   ABT_pool_get_size(mid->rpc_pool, &(mid->trace_records[mid->trace_record_index].metadata.abt_pool_size));
    mid->trace_records[mid->trace_record_index].metadata.mid = mid->self_addr_hash;
    mid->trace_records[mid->trace_record_index].order = order;
    mid->trace_record_index++;
