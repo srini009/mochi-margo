@@ -363,6 +363,8 @@ void __margo_print_profile_data(margo_instance_id mid,
     else
         avg = 0;
 
+    fprintf(stderr, "Do I even get here?\n");
+
     /* SYMBIOSYS BEGIN */
     /* first line is breadcrumb data */
     fprintf(file, "%s,%.9f,%lu,%lu,%d,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%lu,%.9f,%.9f,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%.9f,%.9f,%.9f\n", name, avg, data->key.rpc_breadcrumb, data->key.addr_hash, data->type, data->stats.cumulative, data->stats.handler_time, data->stats.completion_callback_time, data->stats.input_serial_time, data->stats.input_deserial_time, data->stats.output_serial_time, data->stats.internal_rdma_transfer_time, data->stats.internal_rdma_transfer_size, data->stats.min, data->stats.max, data->stats.count, data->stats.abt_pool_size_hwm, data->stats.abt_pool_size_lwm, data->stats.abt_pool_size_cumulative, data->stats.abt_pool_total_size_hwm, data->stats.abt_pool_total_size_lwm, data->stats.abt_pool_total_size_cumulative, data->stats.bulk_transfer_time, data->stats.bulk_create_elapsed, data->stats.bulk_free_elapsed);
