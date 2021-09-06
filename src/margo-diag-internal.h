@@ -23,7 +23,7 @@ void __margo_sparkline_thread_stop(margo_instance_id mid);
 /* SYMBIOSYS begin */
 void __margo_internal_trace_id_set(uint64_t trace_id);
 void __margo_internal_request_order_set(uint64_t order);
-
+__uint128_t __margo_internal_generate_trace_id(margo_instance_id mid);
 void __margo_system_stats_thread_start(margo_instance_id mid);
 void __margo_system_stats_thread_stop(margo_instance_id mid);
 void __margo_internal_generate_trace_event(margo_instance_id mid, uint64_t trace_id, margo_trace_ev_type ev, uint64_t rpc, uint64_t order, double bw, double bw_start, double bw_end);

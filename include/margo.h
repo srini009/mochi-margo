@@ -14,6 +14,9 @@ extern "C" {
 #include <mercury_types.h>
 #include <mercury_bulk.h>
 #include <mercury_macros.h>
+#ifdef MERCURY_PROFILING
+#include <mercury_prof_interface.h>
+#endif
 #include <abt.h>
 #include <margo-diag.h>
 #include <margo-logging.h>
