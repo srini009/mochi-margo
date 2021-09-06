@@ -1144,21 +1144,15 @@ hg_return_t margo_respond(hg_handle_t handle, void* out_struct)
      * profile */
     struct margo_request_struct* treq;
     margo_instance_id            mid = margo_hg_handle_get_instance(handle);
-    if (mid->profile_enabled) {
-        ABT_key_get(g_margo_target_timing_key, (void**)(&treq));
-        assert(treq != NULL);
-
-        /* the "1" indicates that this a target-side breadcrumb */
-        __margo_breadcrumb_measure(mid, treq->rpc_breadcrumb, treq->start_time,
-                                   1, treq->provider_id, treq->server_addr_hash,
-                                   handle);
-    }
 
     /* SYMBIOSYS begin */
     uint64_t * order;
     uint64_t * temp;
     double handler_time = 0, ult_time = 0;
     if(mid->profile_enabled) {
+      ABT_key_get(g_margo_target_timing_key, (void**)(&treq));
+      assert(treq != NULL);
+
       ABT_key_get(g_margo_request_order_key, (void**)(&order));
       handler_time = treq->handler_time;
       ult_time = ABT_get_wtime() - treq->start_time;
@@ -1761,21 +1755,6 @@ void __margo_internal_pre_wrapper_hooks(margo_instance_id mid,
                                         hg_handle_t       handle,
 					double ts)
 {
-    hg_return_t                  ret;
-    const struct hg_info*        info;
-    struct margo_request_struct* req;
-
-    ret = HG_Get_input_buf(handle, (void**)&rpc_breadcrumb, NULL);
-    if (ret != HG_SUCCESS) {
-        // LCOV_EXCL_START
-        MARGO_CRITICAL(mid,
-                       "HG_Get_input_buf() failed in "
-                       "__margo_internal_pre_wrapper_hooks (ret = %d)",
-                       ret);
-        exit(-1);
-        // LCOV_EXCL_END
-    }
-
     /* SYMBIOSYS begin */
     __margo_internal_start_server_time(mid, handle, ts);
     /* SYMBIOSYS end */

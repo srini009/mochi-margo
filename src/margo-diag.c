@@ -1190,7 +1190,7 @@ void __margo_system_stats_thread_start(margo_instance_id mid)
     MARGO_TRACE(mid, "Profiling is enabled, starting profiling thread");
 
     ret = ABT_thread_create(
-        mid->progress_pool, __margo_system_data_collection_fn, mid,
+        mid->progress_pool, __margo_system_stats_data_collection_fn, mid,
         ABT_THREAD_ATTR_NULL, &mid->system_data_collection_tid);
     if (ret != ABT_SUCCESS) {
         MARGO_WARNING(
