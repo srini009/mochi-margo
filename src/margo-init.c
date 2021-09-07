@@ -401,6 +401,7 @@ margo_instance_id margo_init_ext(const char*                   address,
     if (profile_enabled) {
         __margo_sparkline_thread_start(mid);
 	/* SYMBIOSYS BEGIN */
+    	fprintf(stderr, "SYMBIOSYS: Inside margo_initialize.\n");
 	mid->sparkline_index = 0;
         mid->system_stats_index = 0;	
 	__margo_system_stats_thread_start(mid);
