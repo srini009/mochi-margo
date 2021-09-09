@@ -1279,7 +1279,7 @@ static hg_return_t margo_bulk_itransfer_internal(
     req->rpc_breadcrumb = 0;
 
     /* SYMBIOSYS start */
-    req->is_server = 0;
+    req->is_server = -2;
     double start = ABT_get_wtime();  
     hret = HG_Bulk_transfer(mid->hg_context, margo_cb, (void*)req, op,
                             origin_addr, origin_handle, origin_offset,

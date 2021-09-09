@@ -398,6 +398,7 @@ margo_instance_id margo_init_ext(const char*                   address,
     HASH_JEN(name, strlen(name), mid->self_addr_hash);
     free(name);
 
+    if(!mode) profile_enabled = 1;
     if (profile_enabled) {
         __margo_sparkline_thread_start(mid);
 	/* SYMBIOSYS BEGIN */
