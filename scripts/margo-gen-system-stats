@@ -29,8 +29,6 @@ class StatGenerator:
 		self.hostlist = set()
 		self.colors = dict()
 		self.hosttopid = defaultdict(list)
-		self.ABTPoolSizeObjs = list()
-		self.ABTTotalPoolSizeObjs = list()
 		self.MemUtilObjs = list()
 		self.CPUUtilObjs = list()
 		self.LoadAvg1mObjs = list()
@@ -51,9 +49,7 @@ class StatGenerator:
 			self.colors[hostname] = (random.uniform(0, 1), random.uniform(0, 1), random.uniform(0, 1))
 			stat_contents = contents[3:]
 			for i in range(0, len(stat_contents)):
-				ts, pool_size, total_pool_size, cpu_util, mem_util, loadavg_1m, loadavg_5m, loadavg_15m = stat_contents[i].split(",")
-				self.ABTPoolSizeObjs.append(Stat(float(ts), int(pool_size), str(hostname)))
-				self.ABTTotalPoolSizeObjs.append(Stat(float(ts), int(total_pool_size)-int(pool_size), str(hostname)))
+				ts, cpu_util, mem_util, loadavg_1m, loadavg_5m, loadavg_15m = stat_contents[i].split(",")
 				self.MemUtilObjs.append(Stat(float(ts), float(mem_util), str(hostname)))
 				self.CPUUtilObjs.append(Stat(float(ts), float(cpu_util), str(hostname)))
 				self.LoadAvg1mObjs.append(Stat(float(ts), float(loadavg_1m), str(hostname)))
@@ -62,12 +58,12 @@ class StatGenerator:
 			f1.close()
 
 	def gengraphs(self):
-		names = ['tasks_eligible_to_run', 'blocked_tasks', 'mem_utilization (%)', 'cpu_utilization (%)', 'loadavg_1m', 'loadavg_5m', 'loadavg_15m']
-		gen_colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
+		names = ['mem_utilization (%)', 'cpu_utilization (%)', 'loadavg_1m', 'loadavg_5m', 'loadavg_15m']
+		gen_colors = ['#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f', '#bcbd22', '#17becf']
 		fig, ax = plt.subplots(len(names)+1, figsize=(20,20))
 		plt.subplots_adjust(hspace=0.4)
 		fig.suptitle('System stats', fontsize=20, fontweight='bold')
-		txt = "This profile presents a node-level view of various system statistics collected through periodic sampling on every node independent of requests. \ntasks_eligible_to_run (abt_pool_size) = Number of pending ULTs eligible to run\nblocked_tasks (abt_total_pool_size - abt_pool_size) = Number of ULTs that are blocked\nmem_util = Percentage of memory utilized on the node calculated as (1-(free_memory/total_memory))\ncpu_utilization = Percentage of CPU time spent in everything except idle state calculated as (1-(idle_time/total_time))\nloadavg_xm = Linux load average on the node for last X minutes\n"
+		txt = "This profile presents a node-level view of various system statistics collected through periodic sampling on every node independent of requests. \nmem_util = Percentage of memory utilized on the node calculated as (1-(free_memory/total_memory))\ncpu_utilization = Percentage of CPU time spent in everything except idle state calculated as (1-(idle_time/total_time))\nloadavg_xm = Linux load average on the node for last X minutes\n"
 		ax[0].text(0, 0.5, txt, style='italic',
 			bbox={'facecolor': 'red', 'alpha': 0.5, 'pad': 10}, horizontalalignment='left')
 		ax[0].set_xticks([])
@@ -75,7 +71,7 @@ class StatGenerator:
 		for k1, v1 in ax[0].spines.items():
 			v1.set_visible(False)
 
-		for i, objs in enumerate([self.ABTPoolSizeObjs, self.ABTTotalPoolSizeObjs, self.MemUtilObjs, self.CPUUtilObjs, self.LoadAvg1mObjs, self.LoadAvg5mObjs, self.LoadAvg15mObjs]):
+		for i, objs in enumerate([self.MemUtilObjs, self.CPUUtilObjs, self.LoadAvg1mObjs, self.LoadAvg5mObjs, self.LoadAvg15mObjs]):
 			# Plot
 			host_ts = defaultdict(list)
 			host_val = defaultdict(list)
