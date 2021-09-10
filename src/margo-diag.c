@@ -140,7 +140,7 @@ void __margo_internal_start_server_time(margo_instance_id mid, hg_handle_t handl
         __margo_internal_trace_id_set((*metadata).trace_id);
     }
 }
-__uint128_t __margo_internal_generate_trace_id(margo_instance_id mid)
+uint64_t __margo_internal_generate_trace_id(margo_instance_id mid)
 {
     char * name;
     uint64_t trace_id;

@@ -882,7 +882,7 @@ static hg_return_t margo_provider_iforward_internal(
     /* SYMBIOSYS start */
     margo_request_metadata * rpc_breadcrumb;
     uint64_t * order;
-    __uint128_t * trace_id;
+    uint64_t * trace_id;
     /* SYMBIOSYS end */
 
     hgi = HG_Get_info(handle);

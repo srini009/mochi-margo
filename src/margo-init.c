@@ -287,8 +287,8 @@ margo_instance_id margo_init_ext(const char*                   address,
         rpc_pool = pools[rpc_pool_index].pool;
 
     // set input offset to include breadcrumb information in Mercury requests
-    MARGO_TRACE(0, "Setting input offset in hg_class as %d", sizeof(uint64_t));
-    hret = HG_Class_set_input_offset(hg_class, sizeof(uint64_t));
+    MARGO_TRACE(0, "Setting input offset in hg_class as %d", sizeof(margo_request_breadcrumb));
+    hret = HG_Class_set_input_offset(hg_class, sizeof(margo_request_breadcrumb));
     if (hret != HG_SUCCESS) {
         MARGO_ERROR(0, "Could not set input offset in hg_class");
         goto error;
