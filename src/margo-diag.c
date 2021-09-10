@@ -984,7 +984,7 @@ void margo_trace_dump(margo_instance_id mid, const char* file, int uniquify)
     }
 
     for(i = 0; i < mid->trace_record_index; i++) {
-      fprintf(outfile, "%lu, %.9f, %lu, %d, %d, %d, %lu, %d, %d, %lu, %lu, %.9f, %.9f, %.9f, %.9f, %.9f, %.9f\n", mid->trace_records[i].trace_id, mid->trace_records[i].ts, mid->trace_records[i].rpc, mid->trace_records[i].ev, mid->trace_records[i].metadata.abt_pool_size, mid->trace_records[i].metadata.abt_pool_total_size, mid->trace_records[i].metadata.mid, mid->trace_records[i].order, mid->trace_id_counter, mid->trace_records[i].metadata.usage.ru_maxrss, mid->trace_records[i].ofi_events_read, mid->trace_records[i].bulk_transfer_bw,  mid->trace_records[i].bulk_transfer_start,  mid->trace_records[i].bulk_transfer_end, mid->trace_records[i].operation_bw, mid->trace_records[i].operation_start, mid->trace_records[i].operation_stop);
+      fprintf(outfile, "%lu, %.9f, %lu, %d, %d, %d, %lu, %d, %d, %lu, %lu, %.9f, %.9f, %.9f\n", mid->trace_records[i].trace_id, mid->trace_records[i].ts, mid->trace_records[i].rpc, mid->trace_records[i].ev, mid->trace_records[i].metadata.abt_pool_size, mid->trace_records[i].metadata.abt_pool_total_size, mid->trace_records[i].metadata.mid, mid->trace_records[i].order, mid->trace_id_counter, mid->trace_records[i].metadata.usage.ru_maxrss, mid->trace_records[i].ofi_events_read, mid->trace_records[i].bulk_transfer_bw,  mid->trace_records[i].bulk_transfer_start,  mid->trace_records[i].bulk_transfer_end);
 
       /* Below is the chrome-compatible format */
       /*if(mid->trace_records[i].ev == 0 || mid->trace_records[i].ev == 3) {
