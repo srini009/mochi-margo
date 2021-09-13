@@ -537,7 +537,8 @@ void __margo_breadcrumb_measure(margo_instance_id     mid,
       #ifdef MERCURY_PROFILING
       /* Read the exported PVAR data from the Mercury Profiling Interface */
       __margo_read_pvar_data(mid, req->handle, 5, (void*)&stat->stats.completion_callback_time);
-      __margo_read_pvar_data(mid, req->handle, 8, (void*)&stat->stats.input_deserial_time);
+      __margo_read_pvar_data(mid, req->handle, 8, (void*)&stat->stats.input_serial_time);
+      __margo_read_pvar_data(mid, req->handle, 10, (void*)&stat->stats.output_deserial_time);
       #endif
     }
     /* SYMBIOSYS end */

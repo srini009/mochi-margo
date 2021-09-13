@@ -22,7 +22,7 @@
 #define MARGO_DEFAULT_ABT_MEM_MAX_NUM_STACKS 8
 #define MARGO_DEFAULT_ABT_THREAD_STACKSIZE   2097152
 #define MARGO_SYSTEM_STAT_SIZE 10000
-#define MARGO_TRACE_RECORD_SIZE 500000
+#define MARGO_TRACE_RECORD_SIZE 1000000
 
 // Validates the format of the configuration and
 // fill default values if they are note provided
