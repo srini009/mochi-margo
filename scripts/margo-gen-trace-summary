@@ -24,7 +24,7 @@ global_start_time = sys.float_info.max
 global_end_time = 0.0
 
 class Event:
-	def __init__(self, ts, pool_size, blocked_tasks, ev, mid, order, rpc, max_rss, pid, ofi_events_read, bw, bw_start, bw_end, op_bw, op_start, op_end):
+	def __init__(self, ts, pool_size, blocked_tasks, ev, mid, order, rpc, max_rss, pid, ofi_events_read, bw, bw_start, bw_end):
 		self.ts = ts
 		self.pool_size = pool_size
 		self.blocked_tasks = blocked_tasks
@@ -38,9 +38,6 @@ class Event:
 		self.bw = bw
 		self.bw_start = bw_start
 		self.bw_end = bw_end
-		self.op_bw = op_bw
-		self.op_start = op_start
-		self.op_end = op_end
 
 class Span:
 	def __init__(self, name, id_, service_name, start_ts, end_ts, ts, start_type, end_type, address, parent_span):
@@ -229,7 +226,6 @@ class TraceGenerator:
 		self.pidtohost = dict()
 		self.hosts = set()
 		self.host_bw_raw_data = defaultdict(list)
-		self.host_op_bw_raw_data = defaultdict(list)
 		self.tt = PdfPages('trace.pdf')
 
 	# Read all the trace files and gather a list of events for every unique request in the trace file
@@ -252,22 +248,31 @@ class TraceGenerator:
 
 			contents_ = contents[3 + num_registered_rpcs:]
 			for i in range(0, len(contents_)):
-				req_id, ts, rpc, ev, pool_size, total_pool_size, mid, order, counter, max_rss, ofi_events_read, bw, bw_start, bw_end, op_bw, op_start, op_end = contents_[i].split(",")
+				copy_ = contents_[i]
+				copy_list = copy_.split(",")
+				if (len(copy_list) == 14 and int(copy_list[10]) <= 8):
+					req_id, ts, rpc, ev, pool_size, total_pool_size, mid, order, counter, max_rss, ofi_events_read, bw, bw_start, bw_end = contents_[i].split(",")
+				else:
+					continue
 				if(float(bw)):
 					self.host_bw_raw_data[str(hostname)].append((float(bw_start), float(bw_end), float(bw)))
-				if(float(op_bw)):
-					self.host_op_bw_raw_data[str(hostname)].append((float(op_start), float(op_end), float(op_bw)))
 				blocked_tasks = int(total_pool_size) - int(pool_size)
-				self.event_dict[req_id].append(Event(float(ts), int(pool_size), blocked_tasks, int(ev), mid, int(order), int(rpc), int(max_rss), int(pid), int(ofi_events_read), float(bw), float(bw_start), float(bw_end), float(op_bw), float(op_start), float(op_end)))
+				self.event_dict[req_id].append(Event(float(ts), int(pool_size), blocked_tasks, int(ev), mid, int(order), int(rpc), int(max_rss), int(pid), int(ofi_events_read), float(bw), float(bw_start), float(bw_end)))
 			f1.close()
 
 	# Go through every request and sort the events inside the request
+	# Implement sampling to limit trace summary script time
 	def sorteventsinrequest(self):
+		sampling_counter = 1
 		for req in self.event_dict.keys():
-			ev_list = self.event_dict[req]
-			ev_list.sort(key=lambda x: x.order)
-			if (len(ev_list) == 4):
-				self.request_list.append(Request(req, ev_list, ev_list[0].rpc, ev_list[len(ev_list)-1].ts - ev_list[0].ts, ev_list[1].pid))
+			if(sampling_counter == 0):
+				ev_list = self.event_dict[req]
+				ev_list.sort(key=lambda x: x.order)
+				if ((len(ev_list) % 4) == 0):
+					self.request_list.append(Request(req, ev_list, ev_list[0].rpc, ev_list[len(ev_list)-1].ts - ev_list[0].ts, ev_list[1].pid))
+				sampling_counter = 1
+			else:
+				sampling_counter = sampling_counter - 1
 
 	# Generate individual Zipkin-compatible traces
 	def generatezipkintraces(self):
@@ -395,33 +400,6 @@ class TraceGenerator:
 		plt.savefig(self.tt, format='pdf')
 		plt.close()
 	
-	def generateopbwdata(self):
-		n_buckets = int((global_end_time - global_start_time)/time_delta)
-		ts_buckets = []
-		for i in range(0, n_buckets):
-			ts_buckets.append(i*time_delta)
-		host_op_bw_data = defaultdict(list)
-		for host in self.host_op_bw_raw_data.keys():
-			host_op_bw_data[host] = np.zeros(n_buckets)
-			for req in self.host_op_bw_raw_data[host]:
-				op_start = float(req[0])
-				op_end = float(req[1])
-				op_bw = float(req[2])
-				bucket_start_index = int((op_start - global_start_time)/time_delta)
-				bucket_end_index = int((op_end - global_start_time)/time_delta)
-				for index in range(bucket_start_index, bucket_end_index):
-					host_op_bw_data[host][index] += op_bw
-		fig, ax = plt.subplots(figsize=(6, 3))
-		fig.subplots_adjust(bottom=0.15, left=0.2)
-		area = np.pi*3
-		for host in self.host_bw_raw_data.keys():
-			ax.scatter(ts_buckets, host_op_bw_data[host], s=area, c=np.random.rand(3,), alpha=0.6, edgecolors='none', label=str(host))
-		ax.set_xlabel('Time Bucket')
-		ax.set_ylabel('Storage Operation Bandwidth (MB/s)')
-		plt.title('Storage Operation Bandwidth over Time and Across Hosts')
-		plt.savefig(self.tt, format='pdf')
-		plt.close()
-
 	def generatetotaltimediff(self):
 		time = 0.0
 		server_time = 0.0
@@ -452,7 +430,6 @@ def main():
 	t.sorteventsinrequest()
 	#t.generatezipkintraces()
 	t.generatereqmetadata()
-	#t.generatehostbwdata()
 	#t.generatetaillatency()
 	#t.generatetotaltimediff()
 	t.finalize()
