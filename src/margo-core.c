@@ -816,7 +816,6 @@ static hg_return_t margo_cb(const struct hg_cb_info* info)
         if (mid->profile_enabled) {
     /* SYMBIOSYS start */
             /* 0 here indicates this is a origin-side call */
-		fprintf(stderr, "AAAHHHAAA\n");
 	    __margo_breadcrumb_measure(mid, req, 0);
             uint64_t * current_order;
             int ret = HG_Get_output_buf(req->handle, (void**)&current_order, NULL);

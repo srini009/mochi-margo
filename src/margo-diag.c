@@ -537,7 +537,7 @@ void __margo_breadcrumb_measure(margo_instance_id     mid,
       __margo_read_pvar_data(mid, req->handle, 5, (void*)&stat->stats.completion_callback_time);
       __margo_read_pvar_data(mid, req->handle, 8, (void*)&stat->stats.input_serial_time);
       __margo_read_pvar_data(mid, req->handle, 10, (void*)&stat->stats.output_deserial_time);
-      fprintf(stderr, "Capturing: %lf, %lf, %lf\n", stats.completion_callback_time, stat->stats.input_serial_time, stat->stats.output_deserial_time);
+      fprintf(stderr, "Capturing: %lf, %lf, %lf\n", stat->stats.completion_callback_time, stat->stats.input_serial_time, stat->stats.output_deserial_time);
       #endif
     }
     /* SYMBIOSYS end */
