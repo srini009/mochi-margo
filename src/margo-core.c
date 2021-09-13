@@ -292,7 +292,7 @@ void margo_finalize(margo_instance_id mid)
         margo_profile_dump(mid, "profile", 1);
 
 	/* SYMBIOSYS BEGIN */
-    	fprintf(stderr, "SYMBIOSYS: Inside margo_finalize.\n");
+    	MARGO_TRACE(0, "SYMBIOSYS: Inside margo_finalize");
         __margo_system_stats_thread_stop(mid);
         margo_system_stats_dump(mid, "profile", 1);
         margo_trace_dump(mid, "profile", 1);
@@ -804,14 +804,13 @@ static hg_return_t margo_cb(const struct hg_cb_info* info)
         __margo_timer_destroy(mid, req->timer);
     }
     if (req->timer) { free(req->timer); }
-    fprintf(stderr, "SYMBIOSYS: Inside margo_cb. I am a: %d\n", req->is_server);
 
     if (req->rpc_breadcrumb != 0 && req->is_server == 0) {
         /* This is the callback from an HG_Forward call.  Track RPC timing
          * information.
          */
         mid = margo_hg_handle_get_instance(req->handle);
-    	fprintf(stderr, "SYMBIOSYS: Inside margo_cb for HG_Forward. I am a: %d\n", req->is_server);
+    	MARGO_TRACE(0, "SYMBIOSYS: Inside margo_cb for HG_Forward");
 
         if (mid->profile_enabled) {
     /* SYMBIOSYS start */
@@ -823,7 +822,7 @@ static hg_return_t margo_cb(const struct hg_cb_info* info)
             __margo_internal_generate_trace_event(mid, req->trace_id, cr, req->current_rpc, (*current_order) + 1, 0, 0, 0);
         }
     } else if(req->rpc_breadcrumb != 0 && req->is_server == 1) {
-    	fprintf(stderr, "SYMBIOSYS: Inside margo_cb for HG_Respond. I am a: %d\n", req->is_server);
+    	MARGO_TRACE(0, "SYMBIOSYS: Inside margo_cb for HG_Respond");
         /* This is the callback from an HG_Respond call.  Track RPC timing
          * information.*/
           uint64_t * temp;
@@ -882,7 +881,7 @@ static hg_return_t margo_provider_iforward_internal(
     /* SYMBIOSYS start */
     margo_request_metadata * rpc_breadcrumb;
     uint64_t * order;
-    __uint128_t * trace_id;
+    uint64_t * trace_id;
     /* SYMBIOSYS end */
 
     hgi = HG_Get_info(handle);
@@ -945,7 +944,7 @@ static hg_return_t margo_provider_iforward_internal(
     req->rpc_breadcrumb = 0;
     req->is_server = 0;
     if (mid->profile_enabled) {
-    	fprintf(stderr, "SYMBIOSYS: Gathering client side request data for HG_Forward call.\n");
+    	MARGO_TRACE(0, "SYMBIOSYS: Gathering client side request data for HG_Forward call");
         ret = HG_Get_input_buf(handle, (void**)&rpc_breadcrumb, NULL);
         if (ret != HG_SUCCESS) return (ret);
         req->rpc_breadcrumb = __margo_breadcrumb_set(hgi->id);
@@ -1119,7 +1118,7 @@ margo_irespond_internal(hg_handle_t   handle,
   
     /* add the incoming breadcrumb info to a ULT-local key if profiling is enabled */
     if(mid->profile_enabled) {
-    	fprintf(stderr, "SYMBIOSYS: Gathering server side request data for HG_Respond call.\n");
+    	MARGO_TRACE(0, "SYMBIOSYS: Gathering server side request data for HG_Respond call");
 
         req->current_rpc = (*metadata).current_rpc;
         req->trace_id = (*metadata).trace_id;
@@ -1156,7 +1155,7 @@ hg_return_t margo_respond(hg_handle_t handle, void* out_struct)
     uint64_t * temp;
     double handler_time = 0, ult_time = 0;
     if(mid->profile_enabled) {
-      fprintf(stderr, "SYMBIOSYS: Inside margo_respond.\n");
+      MARGO_TRACE(0, "SYMBIOSYS: Inside margo_respond");
       ABT_key_get(g_margo_target_timing_key, (void**)(&treq));
       assert(treq != NULL);
 
@@ -1763,7 +1762,7 @@ void __margo_internal_pre_wrapper_hooks(margo_instance_id mid,
 					double ts)
 {
     /* SYMBIOSYS begin */
-    fprintf(stderr, "SYMBIOSYS: Inside pre-wrapper hook.\n");
+    MARGO_TRACE(0, "SYMBIOSYS: Inside pre-wrapper hook");
     __margo_internal_start_server_time(mid, handle, ts);
     /* SYMBIOSYS end */
 

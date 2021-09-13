@@ -22,7 +22,7 @@
 #define MARGO_DEFAULT_ABT_MEM_MAX_NUM_STACKS 8
 #define MARGO_DEFAULT_ABT_THREAD_STACKSIZE   2097152
 #define MARGO_SYSTEM_STAT_SIZE 10000
-#define MARGO_TRACE_RECORD_SIZE 500000
+#define MARGO_TRACE_RECORD_SIZE 1000000
 
 // Validates the format of the configuration and
 // fill default values if they are note provided
@@ -287,8 +287,8 @@ margo_instance_id margo_init_ext(const char*                   address,
         rpc_pool = pools[rpc_pool_index].pool;
 
     // set input offset to include breadcrumb information in Mercury requests
-    MARGO_TRACE(0, "Setting input offset in hg_class as %d", sizeof(uint64_t));
-    hret = HG_Class_set_input_offset(hg_class, sizeof(uint64_t));
+    MARGO_TRACE(0, "Setting input offset in hg_class as %d", sizeof(margo_request_metadata));
+    hret = HG_Class_set_input_offset(hg_class, sizeof(margo_request_metadata));
     if (hret != HG_SUCCESS) {
         MARGO_ERROR(0, "Could not set input offset in hg_class");
         goto error;
@@ -402,7 +402,7 @@ margo_instance_id margo_init_ext(const char*                   address,
     if (profile_enabled) {
         __margo_sparkline_thread_start(mid);
 	/* SYMBIOSYS BEGIN */
-    	fprintf(stderr, "SYMBIOSYS: Inside margo_initialize.\n");
+    	MARGO_TRACE(0, "SYMBIOSYS: Inside margo_initialize.\n");
 	mid->sparkline_index = 0;
         mid->system_stats_index = 0;	
 	__margo_system_stats_thread_start(mid);
