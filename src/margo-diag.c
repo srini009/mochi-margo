@@ -365,7 +365,7 @@ void __margo_print_profile_data(margo_instance_id mid,
 
     /* SYMBIOSYS BEGIN */
     /* first line is breadcrumb data */
-    fprintf(file, "%s,%.9f,%lu,%lu,%d,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%lu,%.9f,%.9f,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%.9f,%.9f,%.9f\n", name, avg, data->key.rpc_breadcrumb, data->key.addr_hash, data->type, data->stats.cumulative, data->stats.handler_time, data->stats.input_serial_time, data->stats.input_deserial_time, data->stats.output_serial_time, data->stats.internal_rdma_transfer_time, data->stats.internal_rdma_transfer_size, data->stats.min, data->stats.max, data->stats.count, data->stats.abt_pool_size_hwm, data->stats.abt_pool_size_lwm, data->stats.abt_pool_size_cumulative, data->stats.abt_pool_total_size_hwm, data->stats.abt_pool_total_size_lwm, data->stats.abt_pool_total_size_cumulative, data->stats.bulk_transfer_time, data->stats.bulk_create_elapsed, data->stats.bulk_free_elapsed);
+    fprintf(file, "%s,%.9f,%lu,%lu,%d,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%.9f,%lu,%.9f,%.9f,%lu,%lu,%lu,%lu,%lu,%lu,%lu,%.9f,%.9f,%.9f\n", name, avg, data->key.rpc_breadcrumb, data->key.addr_hash, data->type, data->stats.cumulative, data->stats.handler_time, data->stats.completion_callback_time, data->stats.input_serial_time, data->stats.input_deserial_time, data->stats.output_serial_time, data->stats.internal_rdma_transfer_time, data->stats.internal_rdma_transfer_size, data->stats.min, data->stats.max, data->stats.count, data->stats.abt_pool_size_hwm, data->stats.abt_pool_size_lwm, data->stats.abt_pool_size_cumulative, data->stats.abt_pool_total_size_hwm, data->stats.abt_pool_total_size_lwm, data->stats.abt_pool_total_size_cumulative, data->stats.bulk_transfer_time, data->stats.bulk_create_elapsed, data->stats.bulk_free_elapsed);
 
     /* second line is sparkline data for the given breadcrumb*/
     fprintf(file, "%s,%d;", name, data->type);
@@ -535,9 +535,8 @@ void __margo_breadcrumb_measure(margo_instance_id     mid,
       #ifdef MERCURY_PROFILING
       /* Read the exported PVAR data from the Mercury Profiling Interface */
       __margo_read_pvar_data(mid, req->handle, 8, (void*)&stat->stats.input_serial_time);
-      /* For the moment, I am not reading these two PVARs below */
-      /*__margo_read_pvar_data(mid, req->handle, 5, (void*)&stat->stats.completion_callback_time);
-      __margo_read_pvar_data(mid, req->handle, 10, (void*)&stat->stats.output_deserial_time);*/
+      __margo_read_pvar_data(mid, req->handle, 5, (void*)&stat->stats.completion_callback_time);
+      //__margo_read_pvar_data(mid, req->handle, 10, (void*)&stat->stats.output_deserial_time);
       #endif
     }
     /* SYMBIOSYS end */
@@ -840,10 +839,8 @@ static void margo_profile_dump_fp(margo_instance_id mid, FILE* outfile)
         tmp_rpc = tmp_rpc->next;
     }
 
-    fprintf(stderr, "Is this invoked?\n");
     HASH_ITER(hh, mid->diag_rpc, dd, tmp)
     {
-	fprintf(stderr , "How many times is this invoked?\n");
         int      i;
         uint64_t tmp_breadcrumb;
         for (i = 0; i < 4; i++) {
