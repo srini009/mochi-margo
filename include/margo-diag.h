@@ -64,6 +64,7 @@ struct margo_breadcrumb_stats {
     double input_serial_time;
     double input_deserial_time;
     double output_serial_time;
+    double output_deserial_time;
     size_t internal_rdma_transfer_size;
     double bulk_transfer_time;
     double bulk_create_elapsed;
