@@ -201,7 +201,7 @@ num_ofi_events_read = Most recent number of OFI events read by progress engine w
             for host in host_ts.keys():
                 ts = host_ts[host]
                 val = host_val[host]
-                ax[g+1].scatter(ts, val, s=area, c=np.random.rand(3,), alpha=0.6, edgecolors='none')
+                ax[g+1].scatter(ts, val, s=area, c=np.array([np.random.rand(3,)]), alpha=0.6, edgecolors='none')
                 max_ts.append(max(ts))
             #else:
             #   for host in host_ts.keys():
@@ -396,7 +396,7 @@ class TraceGenerator:
         fig.subplots_adjust(bottom=0.15, left=0.2)
         area = np.pi*3
         for host in self.host_bw_raw_data.keys():
-            ax.scatter(ts_buckets, host_bw_data[host], s=area, c=np.random.rand(3,), alpha=0.6, edgecolors='none', label=str(host))
+            ax.scatter(ts_buckets, host_bw_data[host], s=area, c=np.array([np.random.rand(3,)]), alpha=0.6, edgecolors='none', label=str(host))
         ax.set_xlabel('Time Bucket')
         ax.set_ylabel('Network Bandwidth (MB/s)')
         plt.title('Network Bandwidth over Time and Across Hosts')
@@ -431,8 +431,8 @@ def main():
     if(len(sys.argv) == 1):
         print ("Sampling every request. This may be expensive. Try using margo-gen-trace-summary <s> with a higher value for s (integer)")
     else:
-        if((str(sys.argv[1])).isnumeric()):
-            print ("Sampling 1 out every ", int(sys.argv[1]), " requests.")
+        if((str(sys.argv[1])).isdigit()):
+            print ("Sampling 1 out every", int(sys.argv[1]), "requests.")
             sampling_rate = int(sys.argv[1])
         else:
             print ("Sampling every request. Please provide an integer value for sampling rate 's' using: margo-gen-trace-summary <s>")
@@ -448,5 +448,6 @@ def main():
     #t.generatetaillatency()
     #t.generatetotaltimediff()
     t.finalize()
+    print ("Done.")
 
 main()
